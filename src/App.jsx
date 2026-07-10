@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { makeGrid, floodFill } from "./core/grid.js";
 import { createHistory } from "./core/history.js";
 import { render } from "./core/renderer.js";
-import { exportPNG } from "./core/exporter.js";
+import { exportSheet } from "./core/exporter.js";
 import { saveState, loadState } from "./core/storage.js";
 
 // ---------- constants ----------
@@ -41,12 +41,39 @@ function Icon({ name, size = 18, color = "currentColor" }) {
     mirror: "M11 2h2v20h-2V2zM3 6l5 6-5 6V6zm18 0v12l-5-6 5-6z",
     trash: "M9 3h6l1 2h4v2H4V5h4l1-2zM6 8h12l-1 13H7L6 8zm4 3v7h1.5v-7H10zm3 0v7h1.5v-7H13z",
     download: "M12 3v10.2l3.6-3.6L17 11l-5 5-5-5 1.4-1.4L11 13.2V3h1zM4 19h16v2H4v-2z",
+    plus: "M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z",
+    copy: "M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16h-9V7h9v14z",
+    play: "M8 5v14l11-7L8 5z",
+    stop: "M6 6h12v12H6z",
+    onion: "M12 3l8.5 5-8.5 5-8.5-5L12 3zm7 8.2l1.5 .8-8.5 5-8.5-5 1.5-.8L12 15l7-3.8z",
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ display: "block" }}>
       <path d={paths[name]} />
     </svg>
   );
+}
+
+// ---------- frame thumbnail ----------
+function FrameThumb({ pixels, size, rev }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv) return;
+    const ctx = cv.getContext("2d");
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const cell = cv.width / size;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const c = pixels[y * size + x];
+        if (c) {
+          ctx.fillStyle = c;
+          ctx.fillRect(x * cell, y * cell, cell, cell);
+        }
+      }
+    }
+  }, [rev, size, pixels]);
+  return <canvas ref={ref} width={44} height={44} style={{ width: 44, height: 44, display: "block", imageRendering: "pixelated" }} />;
 }
 
 // ---------- main ----------
@@ -61,52 +88,89 @@ export default function App() {
   const [mirrorX, setMirrorX] = useState(false);
   const [exportScale, setExportScale] = useState(8);
   const [version, setVersion] = useState(0);
-  const [undoLen, setUndoLen] = useState(0);
-  const [redoLen, setRedoLen] = useState(0);
 
-  const pixelsRef = useRef(boot?.pixels ?? makeGrid(boot?.size ?? DEFAULT_SIZE));
-  const historyRef = useRef(createHistory());
+  // 애니메이션 프레임
+  const [currentFrame, setCurrentFrame] = useState(() => boot?.currentFrame ?? 0);
+  const [onionSkin, setOnionSkin] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [fps, setFps] = useState(8);
+
+  // 각 프레임은 { pixels, history } — 히스토리가 프레임에 종속되어 undo가 현재 프레임에만 적용된다.
+  const framesRef = useRef(
+    (boot?.frames ?? [makeGrid(boot?.size ?? DEFAULT_SIZE)]).map((px) => ({
+      pixels: px,
+      history: createHistory(),
+    }))
+  );
+  const frameIndexRef = useRef(currentFrame); // 키보드/타이머 클로저용 최신 인덱스
+  const dragIndexRef = useRef(null);
   const drawingRef = useRef(false);
   const canvasRef = useRef(null);
 
+  useEffect(() => {
+    frameIndexRef.current = currentFrame;
+  }, [currentFrame]);
+
   const bump = () => setVersion((v) => v + 1);
-  const syncStacks = () => {
-    setUndoLen(historyRef.current.undoLen);
-    setRedoLen(historyRef.current.redoLen);
-  };
+  const frames = framesRef.current;
+  const activeFrame = () => framesRef.current[frameIndexRef.current];
+
+  // undo/redo 가용 여부는 렌더 시 파생 → 프레임 전환 시 자동 갱신.
+  const activeHistory = frames[currentFrame]?.history;
+  const undoLen = activeHistory ? activeHistory.undoLen : 0;
+  const redoLen = activeHistory ? activeHistory.redoLen : 0;
 
   // ----- rendering -----
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    render(canvas, pixelsRef.current, size, showGrid);
-  }, [version, showGrid, size]);
+    const active = framesRef.current[currentFrame].pixels;
+    const onion =
+      onionSkin && !playing && currentFrame > 0
+        ? framesRef.current[currentFrame - 1].pixels
+        : null;
+    render(canvas, active, size, showGrid, onion);
+  }, [version, showGrid, size, currentFrame, onionSkin, playing]);
 
-  // ----- autosave (픽셀/크기/색 변경 후 디바운스 저장) -----
+  // ----- playback -----
+  useEffect(() => {
+    if (!playing) return;
+    const id = setInterval(() => {
+      setCurrentFrame((f) => (f + 1) % framesRef.current.length);
+    }, 1000 / fps);
+    return () => clearInterval(id);
+  }, [playing, fps]);
+
+  // ----- autosave (픽셀/크기/색/프레임 변경 후 디바운스 저장) -----
   useEffect(() => {
     const t = setTimeout(() => {
-      saveState({ size, pixels: pixelsRef.current, color });
+      saveState({
+        size,
+        frames: framesRef.current.map((f) => f.pixels),
+        currentFrame,
+        color,
+      });
     }, AUTOSAVE_MS);
     return () => clearTimeout(t);
-  }, [version, size, color]);
+  }, [version, size, color, currentFrame]);
 
-  // ----- history -----
+  // ----- history (현재 프레임 대상) -----
   const pushUndo = () => {
-    historyRef.current.push(pixelsRef.current);
-    syncStacks();
+    const fr = activeFrame();
+    fr.history.push(fr.pixels);
   };
   const undo = () => {
-    const prev = historyRef.current.undo(pixelsRef.current);
+    const fr = activeFrame();
+    const prev = fr.history.undo(fr.pixels);
     if (prev === null) return;
-    pixelsRef.current = prev;
-    syncStacks();
+    fr.pixels = prev;
     bump();
   };
   const redo = () => {
-    const next = historyRef.current.redo(pixelsRef.current);
+    const fr = activeFrame();
+    const next = fr.history.redo(fr.pixels);
     if (next === null) return;
-    pixelsRef.current = next;
-    syncStacks();
+    fr.pixels = next;
     bump();
   };
 
@@ -121,7 +185,7 @@ export default function App() {
   };
 
   const paintCell = (x, y) => {
-    const px = pixelsRef.current;
+    const px = activeFrame().pixels;
     const value = tool === "eraser" ? null : color;
     px[y * size + x] = value;
     if (mirrorX) px[y * size + (size - 1 - x)] = value;
@@ -134,13 +198,13 @@ export default function App() {
     const [x, y] = cellPos;
 
     if (tool === "picker") {
-      const c = pixelsRef.current[y * size + x];
+      const c = activeFrame().pixels[y * size + x];
       if (c) setColor(c);
       return;
     }
     if (tool === "fill") {
       pushUndo();
-      pixelsRef.current = floodFill(pixelsRef.current, size, x, y, color);
+      activeFrame().pixels = floodFill(activeFrame().pixels, size, x, y, color);
       bump();
       return;
     }
@@ -167,20 +231,73 @@ export default function App() {
   // ----- actions -----
   const clearCanvas = () => {
     pushUndo();
-    pixelsRef.current = makeGrid(size);
+    activeFrame().pixels = makeGrid(size);
     bump();
   };
 
   const changeSize = (s) => {
     if (s === size) return;
-    pixelsRef.current = makeGrid(s);
-    historyRef.current.reset();
-    syncStacks();
+    // 크기 변경은 전체 초기화 (단일 빈 프레임 + 히스토리 리셋).
+    framesRef.current = [{ pixels: makeGrid(s), history: createHistory() }];
+    setCurrentFrame(0);
+    frameIndexRef.current = 0;
+    setPlaying(false);
     setSize(s);
     bump();
   };
 
-  const handleExport = () => exportPNG(pixelsRef.current, size, exportScale);
+  const handleExport = () =>
+    exportSheet(framesRef.current.map((f) => f.pixels), size, exportScale);
+
+  // ----- frame ops -----
+  const switchFrame = (i) => {
+    setPlaying(false);
+    setCurrentFrame(i);
+    frameIndexRef.current = i;
+    bump();
+  };
+  const addFrame = () => {
+    const i = frameIndexRef.current + 1;
+    framesRef.current.splice(i, 0, { pixels: makeGrid(size), history: createHistory() });
+    setPlaying(false);
+    setCurrentFrame(i);
+    frameIndexRef.current = i;
+    bump();
+  };
+  const duplicateFrame = () => {
+    const i = frameIndexRef.current + 1;
+    framesRef.current.splice(i, 0, {
+      pixels: activeFrame().pixels.slice(),
+      history: createHistory(),
+    });
+    setPlaying(false);
+    setCurrentFrame(i);
+    frameIndexRef.current = i;
+    bump();
+  };
+  const deleteFrame = () => {
+    if (framesRef.current.length <= 1) return;
+    const i = frameIndexRef.current;
+    framesRef.current.splice(i, 1);
+    const next = Math.min(i, framesRef.current.length - 1);
+    setPlaying(false);
+    setCurrentFrame(next);
+    frameIndexRef.current = next;
+    bump();
+  };
+  const reorderFrame = (to) => {
+    const from = dragIndexRef.current;
+    dragIndexRef.current = null;
+    if (from == null || from === to) return;
+    const arr = framesRef.current;
+    const active = arr[frameIndexRef.current];
+    const [moved] = arr.splice(from, 1);
+    arr.splice(to, 0, moved);
+    const idx = arr.indexOf(active);
+    setCurrentFrame(idx);
+    frameIndexRef.current = idx;
+    bump();
+  };
 
   // keyboard shortcuts
   useEffect(() => {
@@ -299,6 +416,25 @@ export default function App() {
       padding: "0 8px",
       fontSize: 13,
     },
+    thumb: (active) => ({
+      flexShrink: 0,
+      position: "relative",
+      padding: 3,
+      background: "#16171c",
+      border: `2px solid ${active ? UI.ember : UI.border}`,
+      borderRadius: 4,
+      cursor: "pointer",
+      lineHeight: 0,
+    }),
+    thumbNum: {
+      position: "absolute",
+      bottom: 1,
+      right: 2,
+      fontSize: 10,
+      color: UI.dim,
+      fontFamily: "monospace",
+      textShadow: "0 0 2px #000",
+    },
   };
 
   const toolDefs = [
@@ -366,6 +502,57 @@ export default function App() {
         />
       </div>
 
+      {/* frames */}
+      <div style={S.panel}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>프레임 · {frames.length}</div>
+          <button style={{ ...S.btn(playing), height: 32, minWidth: 32 }} onClick={() => setPlaying((p) => !p)} title={playing ? "정지" : "재생"}>
+            <Icon name={playing ? "stop" : "play"} color={playing ? "#16130f" : UI.text} size={16} />
+          </button>
+          <input
+            type="range" min={1} max={24} value={fps}
+            onChange={(e) => setFps(Number(e.target.value))}
+            style={{ width: 90, margin: "0 8px", accentColor: UI.ember }}
+            title="재생 속도"
+          />
+          <span style={{ fontSize: 12, color: UI.dim, fontFamily: "monospace", width: 46 }}>{fps} fps</span>
+        </div>
+
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
+          {frames.map((f, i) => (
+            <div
+              key={i}
+              style={S.thumb(i === currentFrame)}
+              onClick={() => switchFrame(i)}
+              draggable
+              onDragStart={() => (dragIndexRef.current = i)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => reorderFrame(i)}
+              title={`프레임 ${i + 1} (드래그로 순서 변경)`}
+            >
+              <FrameThumb pixels={f.pixels} size={size} rev={version} />
+              <span style={S.thumbNum}>{i + 1}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ ...S.toolRow, marginTop: 8 }}>
+          <button style={{ ...S.btn(false), height: 34 }} onClick={addFrame} title="프레임 추가">
+            <Icon name="plus" size={16} /> 추가
+          </button>
+          <button style={{ ...S.btn(false), height: 34 }} onClick={duplicateFrame} title="현재 프레임 복제">
+            <Icon name="copy" size={16} /> 복제
+          </button>
+          <button style={{ ...S.btn(false, true), height: 34 }} onClick={deleteFrame} disabled={frames.length <= 1} title="현재 프레임 삭제">
+            <Icon name="trash" size={16} color={frames.length <= 1 ? "#4a4d58" : "#ff8a7a"} />
+          </button>
+          <div style={{ flex: 1 }} />
+          <button style={{ ...S.btn(onionSkin), height: 34 }} onClick={() => setOnionSkin((o) => !o)} title="어니언 스킨 (이전 프레임 표시)">
+            <Icon name="onion" size={16} color={onionSkin ? "#16130f" : UI.text} /> 어니언
+          </button>
+        </div>
+      </div>
+
       {/* palette */}
       <div style={S.panel}>
         <div style={S.label}>Palette — Sweetie 16</div>
@@ -393,7 +580,9 @@ export default function App() {
       {/* export */}
       <div style={S.panel}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>PNG 내보내기</div>
+          <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>
+            {frames.length > 1 ? "스프라이트 시트 내보내기" : "PNG 내보내기"}
+          </div>
           <select style={S.select} value={exportScale} onChange={(e) => setExportScale(Number(e.target.value))}>
             {[1, 4, 8, 16].map((s) => (
               <option key={s} value={s}>{s}×</option>

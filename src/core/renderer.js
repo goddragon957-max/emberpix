@@ -5,7 +5,7 @@ export function cellSize(size) {
   return Math.max(4, Math.floor(640 / size));
 }
 
-export function render(canvas, pixels, size, showGrid) {
+export function render(canvas, pixels, size, showGrid, onion = null) {
   const cell = cellSize(size);
   canvas.width = size * cell;
   canvas.height = size * cell;
@@ -17,6 +17,21 @@ export function render(canvas, pixels, size, showGrid) {
       ctx.fillStyle = (x + y) % 2 === 0 ? "#23252d" : "#1b1d23";
       ctx.fillRect(x * cell, y * cell, cell, cell);
     }
+  }
+
+  // 어니언 스킨 (이전 프레임 30% 투명도, 현재 픽셀 아래에 표시)
+  if (onion) {
+    ctx.globalAlpha = 0.3;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const c = onion[y * size + x];
+        if (c) {
+          ctx.fillStyle = c;
+          ctx.fillRect(x * cell, y * cell, cell, cell);
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
   }
 
   // 픽셀
