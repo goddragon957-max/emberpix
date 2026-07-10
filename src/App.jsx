@@ -1,4 +1,9 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { makeGrid, floodFill } from "./core/grid.js";
+import { createHistory } from "./core/history.js";
+import { render } from "./core/renderer.js";
+import { exportPNG } from "./core/exporter.js";
+import { saveState, loadState } from "./core/storage.js";
 
 // ---------- constants ----------
 const PALETTE = [
@@ -8,7 +13,9 @@ const PALETTE = [
   "#f4f4f4", "#94b0c2", "#566c86", "#333c57",
 ];
 const SIZES = [16, 32, 64];
-const MAX_UNDO = 60;
+const DEFAULT_SIZE = 32;
+const DEFAULT_COLOR = PALETTE[3];
+const AUTOSAVE_MS = 500;
 
 const UI = {
   bg: "#141519",
@@ -20,27 +27,6 @@ const UI = {
   ember: "#ff7a2f",
   emberDeep: "#e35b1e",
 };
-
-// ---------- helpers ----------
-function makeGrid(size) {
-  return new Array(size * size).fill(null);
-}
-
-function floodFill(pixels, size, sx, sy, newColor) {
-  const target = pixels[sy * size + sx];
-  if (target === newColor) return pixels;
-  const out = pixels.slice();
-  const stack = [[sx, sy]];
-  while (stack.length) {
-    const [x, y] = stack.pop();
-    if (x < 0 || y < 0 || x >= size || y >= size) continue;
-    const i = y * size + x;
-    if (out[i] !== target) continue;
-    out[i] = newColor;
-    stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
-  }
-  return out;
-}
 
 // ---------- tiny pixel-icon component ----------
 function Icon({ name, size = 18, color = "currentColor" }) {
@@ -65,9 +51,12 @@ function Icon({ name, size = 18, color = "currentColor" }) {
 
 // ---------- main ----------
 export default function App() {
-  const [size, setSize] = useState(32);
+  // 자동 저장본 복구 (없거나 손상 시 null → 기본값).
+  const [boot] = useState(() => loadState());
+
+  const [size, setSize] = useState(() => boot?.size ?? DEFAULT_SIZE);
   const [tool, setTool] = useState("pen");
-  const [color, setColor] = useState(PALETTE[3]);
+  const [color, setColor] = useState(() => boot?.color ?? DEFAULT_COLOR);
   const [showGrid, setShowGrid] = useState(true);
   const [mirrorX, setMirrorX] = useState(false);
   const [exportScale, setExportScale] = useState(8);
@@ -75,80 +64,48 @@ export default function App() {
   const [undoLen, setUndoLen] = useState(0);
   const [redoLen, setRedoLen] = useState(0);
 
-  const pixelsRef = useRef(makeGrid(32));
-  const undoRef = useRef([]);
-  const redoRef = useRef([]);
+  const pixelsRef = useRef(boot?.pixels ?? makeGrid(boot?.size ?? DEFAULT_SIZE));
+  const historyRef = useRef(createHistory());
   const drawingRef = useRef(false);
   const canvasRef = useRef(null);
 
-  const bump = () => setVersion(v => v + 1);
+  const bump = () => setVersion((v) => v + 1);
   const syncStacks = () => {
-    setUndoLen(undoRef.current.length);
-    setRedoLen(redoRef.current.length);
+    setUndoLen(historyRef.current.undoLen);
+    setRedoLen(historyRef.current.redoLen);
   };
 
   // ----- rendering -----
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const cell = Math.max(4, Math.floor(640 / size));
-    canvas.width = size * cell;
-    canvas.height = size * cell;
-    const ctx = canvas.getContext("2d");
-
-    // checkerboard (transparency)
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        ctx.fillStyle = (x + y) % 2 === 0 ? "#23252d" : "#1b1d23";
-        ctx.fillRect(x * cell, y * cell, cell, cell);
-      }
-    }
-    // pixels
-    const px = pixelsRef.current;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const c = px[y * size + x];
-        if (c) {
-          ctx.fillStyle = c;
-          ctx.fillRect(x * cell, y * cell, cell, cell);
-        }
-      }
-    }
-    // grid
-    if (showGrid) {
-      ctx.strokeStyle = "rgba(255,255,255,0.07)";
-      ctx.lineWidth = 1;
-      for (let i = 1; i < size; i++) {
-        ctx.beginPath();
-        ctx.moveTo(i * cell + 0.5, 0);
-        ctx.lineTo(i * cell + 0.5, size * cell);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(0, i * cell + 0.5);
-        ctx.lineTo(size * cell, i * cell + 0.5);
-        ctx.stroke();
-      }
-    }
+    render(canvas, pixelsRef.current, size, showGrid);
   }, [version, showGrid, size]);
+
+  // ----- autosave (픽셀/크기/색 변경 후 디바운스 저장) -----
+  useEffect(() => {
+    const t = setTimeout(() => {
+      saveState({ size, pixels: pixelsRef.current, color });
+    }, AUTOSAVE_MS);
+    return () => clearTimeout(t);
+  }, [version, size, color]);
 
   // ----- history -----
   const pushUndo = () => {
-    undoRef.current.push(pixelsRef.current.slice());
-    if (undoRef.current.length > MAX_UNDO) undoRef.current.shift();
-    redoRef.current = [];
+    historyRef.current.push(pixelsRef.current);
     syncStacks();
   };
   const undo = () => {
-    if (!undoRef.current.length) return;
-    redoRef.current.push(pixelsRef.current);
-    pixelsRef.current = undoRef.current.pop();
+    const prev = historyRef.current.undo(pixelsRef.current);
+    if (prev === null) return;
+    pixelsRef.current = prev;
     syncStacks();
     bump();
   };
   const redo = () => {
-    if (!redoRef.current.length) return;
-    undoRef.current.push(pixelsRef.current);
-    pixelsRef.current = redoRef.current.pop();
+    const next = historyRef.current.redo(pixelsRef.current);
+    if (next === null) return;
+    pixelsRef.current = next;
     syncStacks();
     bump();
   };
@@ -217,34 +174,13 @@ export default function App() {
   const changeSize = (s) => {
     if (s === size) return;
     pixelsRef.current = makeGrid(s);
-    undoRef.current = [];
-    redoRef.current = [];
+    historyRef.current.reset();
     syncStacks();
     setSize(s);
     bump();
   };
 
-  const exportPNG = () => {
-    const off = document.createElement("canvas");
-    off.width = size * exportScale;
-    off.height = size * exportScale;
-    const ctx = off.getContext("2d");
-    ctx.imageSmoothingEnabled = false;
-    const px = pixelsRef.current;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const c = px[y * size + x];
-        if (c) {
-          ctx.fillStyle = c;
-          ctx.fillRect(x * exportScale, y * exportScale, exportScale, exportScale);
-        }
-      }
-    }
-    const a = document.createElement("a");
-    a.href = off.toDataURL("image/png");
-    a.download = `emberpix_${size}x${size}_${exportScale}x.png`;
-    a.click();
-  };
+  const handleExport = () => exportPNG(pixelsRef.current, size, exportScale);
 
   // keyboard shortcuts
   useEffect(() => {
@@ -463,7 +399,7 @@ export default function App() {
               <option key={s} value={s}>{s}×</option>
             ))}
           </select>
-          <button style={{ ...S.btn(true), height: 36 }} onClick={exportPNG}>
+          <button style={{ ...S.btn(true), height: 36 }} onClick={handleExport}>
             <Icon name="download" color="#16130f" />
             저장
           </button>
