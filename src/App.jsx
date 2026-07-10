@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { makeGrid, floodFill } from "./core/grid.js";
 import { createHistory } from "./core/history.js";
-import { render } from "./core/renderer.js";
+import { render, renderTilePreview } from "./core/renderer.js";
 import { exportSheet } from "./core/exporter.js";
 import { saveState, loadState } from "./core/storage.js";
 
@@ -95,6 +95,10 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [fps, setFps] = useState(8);
 
+  // 타일 모드 (3×3 반복 미리보기)
+  const [tilePreview, setTilePreview] = useState(false);
+  const tileCanvasRef = useRef(null);
+
   // 각 프레임은 { pixels, history } — 히스토리가 프레임에 종속되어 undo가 현재 프레임에만 적용된다.
   const framesRef = useRef(
     (boot?.frames ?? [makeGrid(boot?.size ?? DEFAULT_SIZE)]).map((px) => ({
@@ -131,6 +135,14 @@ export default function App() {
         : null;
     render(canvas, active, size, showGrid, onion);
   }, [version, showGrid, size, currentFrame, onionSkin, playing]);
+
+  // ----- tile preview (켜져 있으면 현재 프레임을 3×3 반복 렌더) -----
+  useEffect(() => {
+    if (!tilePreview) return;
+    const cv = tileCanvasRef.current;
+    if (!cv) return;
+    renderTilePreview(cv, framesRef.current[currentFrame].pixels, size);
+  }, [tilePreview, version, currentFrame, size]);
 
   // ----- playback -----
   useEffect(() => {
@@ -551,6 +563,34 @@ export default function App() {
             <Icon name="onion" size={16} color={onionSkin ? "#16130f" : UI.text} /> 어니언
           </button>
         </div>
+      </div>
+
+      {/* tile preview */}
+      <div style={S.panel}>
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>타일 모드</div>
+          <button
+            style={{ ...S.btn(tilePreview), height: 34 }}
+            onClick={() => setTilePreview((t) => !t)}
+            title="3×3 반복 미리보기 (심리스 타일 확인)"
+          >
+            <Icon name="grid" size={16} color={tilePreview ? "#16130f" : UI.text} /> 3×3 미리보기
+          </button>
+        </div>
+        {tilePreview && (
+          <canvas
+            ref={tileCanvasRef}
+            style={{
+              width: "100%",
+              display: "block",
+              marginTop: 10,
+              imageRendering: "pixelated",
+              border: `1px solid ${UI.border}`,
+              borderRadius: 4,
+              background: UI.bg,
+            }}
+          />
+        )}
       </div>
 
       {/* palette */}

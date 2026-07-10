@@ -61,3 +61,29 @@ export function render(canvas, pixels, size, showGrid, onion = null) {
     }
   }
 }
+
+// 3×3 반복 타일 미리보기 (심리스 타일 확인용).
+// 1셀 = 1px 내부 해상도로 좌상단 타일을 그린 뒤 8회 복제,
+// 표시 확대는 CSS(image-rendering: pixelated)에 맡긴다.
+export function renderTilePreview(canvas, pixels, size) {
+  canvas.width = size * 3;
+  canvas.height = size * 3;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const c = pixels[y * size + x];
+      if (c) {
+        ctx.fillStyle = c;
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+  for (let ty = 0; ty < 3; ty++) {
+    for (let tx = 0; tx < 3; tx++) {
+      if (tx === 0 && ty === 0) continue;
+      ctx.drawImage(canvas, 0, 0, size, size, tx * size, ty * size, size, size);
+    }
+  }
+}
