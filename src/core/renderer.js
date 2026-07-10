@@ -5,7 +5,7 @@ export function cellSize(size) {
   return Math.max(4, Math.floor(640 / size));
 }
 
-export function render(canvas, pixels, size, showGrid, onion = null) {
+export function render(canvas, pixels, size, showGrid, onion = null, reference = null) {
   const cell = cellSize(size);
   canvas.width = size * cell;
   canvas.height = size * cell;
@@ -16,6 +16,19 @@ export function render(canvas, pixels, size, showGrid, onion = null) {
     for (let x = 0; x < size; x++) {
       ctx.fillStyle = (x + y) % 2 === 0 ? "#23252d" : "#1b1d23";
       ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+  }
+
+  // 색칠공부 참조 이미지 (흑백 밝기, 그린 픽셀 아래에 깔림 — 내보내기 미포함)
+  if (reference) {
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const v = reference[y * size + x];
+        if (v !== null) {
+          ctx.fillStyle = `rgb(${v},${v},${v})`;
+          ctx.fillRect(x * cell, y * cell, cell, cell);
+        }
+      }
     }
   }
 

@@ -4,6 +4,7 @@ import { createHistory } from "./core/history.js";
 import { render, renderTilePreview } from "./core/renderer.js";
 import { exportSheet } from "./core/exporter.js";
 import { saveState, loadState } from "./core/storage.js";
+import { imageFromFile, sampleReference } from "./core/reference.js";
 
 // ---------- constants ----------
 const PALETTE = [
@@ -46,6 +47,7 @@ function Icon({ name, size = 18, color = "currentColor" }) {
     play: "M8 5v14l11-7L8 5z",
     stop: "M6 6h12v12H6z",
     onion: "M12 3l8.5 5-8.5 5-8.5-5L12 3zm7 8.2l1.5 .8-8.5 5-8.5-5 1.5-.8L12 15l7-3.8z",
+    image: "M3 4h18v16H3V4zm2 2v12h14V6H5zm2 10l3-4 2 2.5 1.5-2L17 16H7zm3-7a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8z",
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ display: "block" }}>
@@ -99,6 +101,12 @@ export default function App() {
   const [tilePreview, setTilePreview] = useState(false);
   const tileCanvasRef = useRef(null);
 
+  // 색칠공부 (참조 이미지를 흑백으로 캔버스 아래에 표시)
+  const [reference, setReference] = useState(() => boot?.reference ?? null);
+  const [showReference, setShowReference] = useState(true);
+  const refImageRef = useRef(null); // 원본 이미지 — 크기 변경 시 재샘플용 (세션 한정)
+  const fileInputRef = useRef(null);
+
   // 각 프레임은 { pixels, history } — 히스토리가 프레임에 종속되어 undo가 현재 프레임에만 적용된다.
   const framesRef = useRef(
     (boot?.frames ?? [makeGrid(boot?.size ?? DEFAULT_SIZE)]).map((px) => ({
@@ -133,8 +141,8 @@ export default function App() {
       onionSkin && !playing && currentFrame > 0
         ? framesRef.current[currentFrame - 1].pixels
         : null;
-    render(canvas, active, size, showGrid, onion);
-  }, [version, showGrid, size, currentFrame, onionSkin, playing]);
+    render(canvas, active, size, showGrid, onion, showReference ? reference : null);
+  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference]);
 
   // ----- tile preview (켜져 있으면 현재 프레임을 3×3 반복 렌더) -----
   useEffect(() => {
@@ -161,10 +169,11 @@ export default function App() {
         frames: framesRef.current.map((f) => f.pixels),
         currentFrame,
         color,
+        reference,
       });
     }, AUTOSAVE_MS);
     return () => clearTimeout(t);
-  }, [version, size, color, currentFrame]);
+  }, [version, size, color, currentFrame, reference]);
 
   // ----- history (현재 프레임 대상) -----
   const pushUndo = () => {
@@ -254,12 +263,31 @@ export default function App() {
     setCurrentFrame(0);
     frameIndexRef.current = 0;
     setPlaying(false);
+    // 참조 이미지: 원본이 세션에 있으면 새 크기로 재샘플, 없으면 해제.
+    setReference(refImageRef.current ? sampleReference(refImageRef.current, s) : null);
     setSize(s);
     bump();
   };
 
   const handleExport = () =>
     exportSheet(framesRef.current.map((f) => f.pixels), size, exportScale);
+
+  // ----- coloring reference -----
+  const loadReference = async (file) => {
+    if (!file) return;
+    try {
+      const img = await imageFromFile(file);
+      refImageRef.current = img;
+      setReference(sampleReference(img, size));
+      setShowReference(true);
+    } catch {
+      // 이미지가 아니거나 손상된 파일 — 조용히 무시.
+    }
+  };
+  const clearReference = () => {
+    refImageRef.current = null;
+    setReference(null);
+  };
 
   // ----- frame ops -----
   const switchFrame = (i) => {
@@ -591,6 +619,48 @@ export default function App() {
             }}
           />
         )}
+      </div>
+
+      {/* coloring reference */}
+      <div style={S.panel}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>색칠공부</div>
+          <button
+            style={{ ...S.btn(false), height: 34 }}
+            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+            title="참조 이미지 불러오기 — 흑백으로 캔버스 아래에 깔림 (내보내기 미포함)"
+          >
+            <Icon name="image" size={16} /> 이미지 불러오기
+          </button>
+          {reference && (
+            <>
+              <button
+                style={{ ...S.btn(showReference), height: 34 }}
+                onClick={() => setShowReference((v) => !v)}
+                title="참조 이미지 표시/숨김"
+              >
+                표시
+              </button>
+              <button
+                style={{ ...S.btn(false, true), height: 34 }}
+                onClick={clearReference}
+                title="참조 이미지 제거"
+              >
+                <Icon name="trash" size={16} color="#ff8a7a" />
+              </button>
+            </>
+          )}
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            loadReference(e.target.files && e.target.files[0]);
+            e.target.value = "";
+          }}
+        />
       </div>
 
       {/* palette */}
