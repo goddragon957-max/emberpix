@@ -5,7 +5,7 @@ export function cellSize(size) {
   return Math.max(4, Math.floor(640 / size));
 }
 
-export function render(canvas, pixels, size, showGrid, onion = null, reference = null) {
+export function render(canvas, pixels, size, showGrid, onion = null, reference = null, refAlpha = 1) {
   const cell = cellSize(size);
   canvas.width = size * cell;
   canvas.height = size * cell;
@@ -20,7 +20,9 @@ export function render(canvas, pixels, size, showGrid, onion = null, reference =
   }
 
   // 색칠공부 참조 이미지 (흑백 밝기, 그린 픽셀 아래에 깔림 — 내보내기 미포함)
+  // refAlpha: 밑그림 투명도(0~1). 낮추면 체커보드가 비쳐 연한 가이드가 된다.
   if (reference) {
+    ctx.globalAlpha = refAlpha;
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const v = reference[y * size + x];
@@ -30,6 +32,7 @@ export function render(canvas, pixels, size, showGrid, onion = null, reference =
         }
       }
     }
+    ctx.globalAlpha = 1;
   }
 
   // 어니언 스킨 (이전 프레임 30% 투명도, 현재 픽셀 아래에 표시)

@@ -8,7 +8,7 @@ const KEY_V2 = "emberpix:autosave:v2";
 const KEY_V1 = "emberpix:autosave:v1";
 const VALID_SIZES = [16, 32, 64];
 
-export function saveState({ size, frames, currentFrame, color, reference }) {
+export function saveState({ size, frames, currentFrame, color, reference, refOpacity }) {
   try {
     localStorage.setItem(
       KEY_V2,
@@ -19,6 +19,7 @@ export function saveState({ size, frames, currentFrame, color, reference }) {
         currentFrame,
         color,
         reference: reference ?? null,
+        refOpacity: typeof refOpacity === "number" ? refOpacity : 1,
       })
     );
   } catch {
@@ -53,6 +54,10 @@ function readV2() {
       currentFrame: Math.max(0, Math.min(cf, d.frames.length - 1)),
       color: typeof d.color === "string" ? d.color : "#ef7d57",
       reference: isValidReference(d.reference, d.size) ? d.reference : null,
+      refOpacity:
+        typeof d.refOpacity === "number" && d.refOpacity >= 0.1 && d.refOpacity <= 1
+          ? d.refOpacity
+          : 1,
     };
   } catch {
     return null;

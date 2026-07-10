@@ -5,6 +5,7 @@ import { render, renderTilePreview } from "./core/renderer.js";
 import { exportSheet } from "./core/exporter.js";
 import { saveState, loadState } from "./core/storage.js";
 import { imageFromFile, sampleReference } from "./core/reference.js";
+import { TEMPLATES, templateToReference } from "./core/templates.js";
 
 // ---------- constants ----------
 const PALETTE = [
@@ -78,6 +79,25 @@ function FrameThumb({ pixels, size, rev }) {
   return <canvas ref={ref} width={44} height={44} style={{ width: 44, height: 44, display: "block", imageRendering: "pixelated" }} />;
 }
 
+// ---------- template thumbnail (도안 미리보기) ----------
+function TemplateThumb({ tpl }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv) return;
+    const ctx = cv.getContext("2d");
+    const n = tpl.rows.length;
+    const cell = cv.width / n;
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        ctx.fillStyle = tpl.rows[y][x] === "#" ? "#2d2d2d" : "#f4f4f4";
+        ctx.fillRect(x * cell, y * cell, cell, cell);
+      }
+    }
+  }, [tpl]);
+  return <canvas ref={ref} width={48} height={48} style={{ width: 48, height: 48, display: "block", imageRendering: "pixelated", borderRadius: 2 }} />;
+}
+
 // ---------- main ----------
 export default function App() {
   // 자동 저장본 복구 (없거나 손상 시 null → 기본값).
@@ -101,10 +121,13 @@ export default function App() {
   const [tilePreview, setTilePreview] = useState(false);
   const tileCanvasRef = useRef(null);
 
-  // 색칠공부 (참조 이미지를 흑백으로 캔버스 아래에 표시)
+  // 색칠공부 (참조 이미지/도안을 흑백으로 캔버스 아래에 표시)
   const [reference, setReference] = useState(() => boot?.reference ?? null);
   const [showReference, setShowReference] = useState(true);
-  const refImageRef = useRef(null); // 원본 이미지 — 크기 변경 시 재샘플용 (세션 한정)
+  const [refOpacity, setRefOpacity] = useState(() => boot?.refOpacity ?? 1);
+  // 참조 출처 — 크기 변경 시 재생성용 (세션 한정, 저장 안 함).
+  // null | { type: "image", img } | { type: "template", index }
+  const [refSource, setRefSource] = useState(null);
   const fileInputRef = useRef(null);
 
   // 각 프레임은 { pixels, history } — 히스토리가 프레임에 종속되어 undo가 현재 프레임에만 적용된다.
@@ -141,8 +164,8 @@ export default function App() {
       onionSkin && !playing && currentFrame > 0
         ? framesRef.current[currentFrame - 1].pixels
         : null;
-    render(canvas, active, size, showGrid, onion, showReference ? reference : null);
-  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference]);
+    render(canvas, active, size, showGrid, onion, showReference ? reference : null, refOpacity);
+  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference, refOpacity]);
 
   // ----- tile preview (켜져 있으면 현재 프레임을 3×3 반복 렌더) -----
   useEffect(() => {
@@ -170,10 +193,11 @@ export default function App() {
         currentFrame,
         color,
         reference,
+        refOpacity,
       });
     }, AUTOSAVE_MS);
     return () => clearTimeout(t);
-  }, [version, size, color, currentFrame, reference]);
+  }, [version, size, color, currentFrame, reference, refOpacity]);
 
   // ----- history (현재 프레임 대상) -----
   const pushUndo = () => {
@@ -225,7 +249,9 @@ export default function App() {
     }
     if (tool === "fill") {
       pushUndo();
-      activeFrame().pixels = floodFill(activeFrame().pixels, size, x, y, color);
+      // 밑그림이 보이는 동안엔 도안 선(어두운 셀)이 채우기 경계가 된다.
+      const barrier = showReference ? reference : null;
+      activeFrame().pixels = floodFill(activeFrame().pixels, size, x, y, color, barrier);
       bump();
       return;
     }
@@ -263,8 +289,10 @@ export default function App() {
     setCurrentFrame(0);
     frameIndexRef.current = 0;
     setPlaying(false);
-    // 참조 이미지: 원본이 세션에 있으면 새 크기로 재샘플, 없으면 해제.
-    setReference(refImageRef.current ? sampleReference(refImageRef.current, s) : null);
+    // 참조: 출처가 세션에 있으면 새 크기로 재생성, 없으면 해제.
+    if (refSource?.type === "image") setReference(sampleReference(refSource.img, s));
+    else if (refSource?.type === "template") setReference(templateToReference(TEMPLATES[refSource.index], s));
+    else setReference(null);
     setSize(s);
     bump();
   };
@@ -277,15 +305,20 @@ export default function App() {
     if (!file) return;
     try {
       const img = await imageFromFile(file);
-      refImageRef.current = img;
+      setRefSource({ type: "image", img });
       setReference(sampleReference(img, size));
       setShowReference(true);
     } catch {
       // 이미지가 아니거나 손상된 파일 — 조용히 무시.
     }
   };
+  const applyTemplate = (index) => {
+    setRefSource({ type: "template", index });
+    setReference(templateToReference(TEMPLATES[index], size));
+    setShowReference(true);
+  };
   const clearReference = () => {
-    refImageRef.current = null;
+    setRefSource(null);
     setReference(null);
   };
 
@@ -661,6 +694,45 @@ export default function App() {
             e.target.value = "";
           }}
         />
+
+        {/* 밑그림 투명도 */}
+        {reference && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+            <span style={{ fontSize: 11, color: UI.dim, letterSpacing: 1 }}>투명도</span>
+            <input
+              type="range"
+              min={10}
+              max={100}
+              value={Math.round(refOpacity * 100)}
+              onChange={(e) => setRefOpacity(Number(e.target.value) / 100)}
+              style={{ flex: 1, accentColor: UI.ember }}
+              title="밑그림 투명도"
+            />
+            <span style={{ fontSize: 12, color: UI.dim, fontFamily: "monospace", width: 40, textAlign: "right" }}>
+              {Math.round(refOpacity * 100)}%
+            </span>
+          </div>
+        )}
+
+        {/* 내장 도안 갤러리 */}
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 10, paddingBottom: 4 }}>
+          {TEMPLATES.map((t, i) => {
+            const active = refSource?.type === "template" && refSource.index === i;
+            return (
+              <div
+                key={t.name}
+                style={{ ...S.thumb(active), lineHeight: "normal" }}
+                onClick={() => applyTemplate(i)}
+                title={`${t.name} 도안 깔기`}
+              >
+                <TemplateThumb tpl={t} />
+                <div style={{ fontSize: 10, color: active ? UI.ember : UI.dim, textAlign: "center", marginTop: 3 }}>
+                  {t.name}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* palette */}
