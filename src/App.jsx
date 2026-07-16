@@ -4,6 +4,7 @@ import { createHistory } from "./core/history.js";
 import { render, renderTilePreview } from "./core/renderer.js";
 import { exportSheet } from "./core/exporter.js";
 import { saveState, loadState } from "./core/storage.js";
+import { saveProjectFile, parseProject } from "./core/project.js";
 import { imageFromFile, sampleReference } from "./core/reference.js";
 import { TEMPLATES, templateToReference } from "./core/templates.js";
 
@@ -43,6 +44,7 @@ function Icon({ name, size = 18, color = "currentColor" }) {
     mirror: "M11 2h2v20h-2V2zM3 6l5 6-5 6V6zm18 0v12l-5-6 5-6z",
     trash: "M9 3h6l1 2h4v2H4V5h4l1-2zM6 8h12l-1 13H7L6 8zm4 3v7h1.5v-7H10zm3 0v7h1.5v-7H13z",
     download: "M12 3v10.2l3.6-3.6L17 11l-5 5-5-5 1.4-1.4L11 13.2V3h1zM4 19h16v2H4v-2z",
+    upload: "M12 21V10.8l3.6 3.6L17 13l-5-5-5 5 1.4 1.4 2.6-2.6V21h1zM4 3h16v2H4V3z",
     plus: "M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z",
     copy: "M16 1H6a2 2 0 0 0-2 2v12h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16h-9V7h9v14z",
     play: "M8 5v14l11-7L8 5z",
@@ -129,6 +131,11 @@ export default function App() {
   // null | { type: "image", img } | { type: "template", index }
   const [refSource, setRefSource] = useState(null);
   const fileInputRef = useRef(null);
+
+  // 프로젝트 저장/불러오기 (.emberpix)
+  const projectInputRef = useRef(null);
+  // { text, error } | null — 불러오기 결과 안내 (4초 후 자동 사라짐).
+  const [notice, setNotice] = useState(null);
 
   // 각 프레임은 { pixels, history } — 히스토리가 프레임에 종속되어 undo가 현재 프레임에만 적용된다.
   const framesRef = useRef(
@@ -299,6 +306,60 @@ export default function App() {
 
   const handleExport = () =>
     exportSheet(framesRef.current.map((f) => f.pixels), size, exportScale);
+
+  // ----- project save/load (.emberpix) -----
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 4000);
+    return () => clearTimeout(t);
+  }, [notice]);
+
+  const handleProjectSave = () =>
+    saveProjectFile({
+      size,
+      frames: framesRef.current.map((f) => f.pixels),
+      currentFrame,
+      color,
+      palette: PALETTE,
+      reference,
+      refOpacity,
+    });
+
+  const handleProjectLoad = async (file) => {
+    if (!file) return;
+    let data = null;
+    try {
+      data = parseProject(await file.text());
+    } catch {
+      data = null;
+    }
+    if (!data) {
+      setNotice({ text: "불러오기 실패 — 손상되었거나 .emberpix 형식이 아닙니다.", error: true });
+      return;
+    }
+    // 상태 복원 + undo 히스토리 초기화.
+    framesRef.current = data.frames.map((px) => ({ pixels: px, history: createHistory() }));
+    frameIndexRef.current = data.currentFrame;
+    setCurrentFrame(data.currentFrame);
+    setSize(data.size);
+    setColor(data.color);
+    setReference(data.reference);
+    setRefSource(null); // 파일에는 밑그림 원본(이미지/도안 출처)이 없다.
+    setRefOpacity(data.refOpacity);
+    setShowReference(true);
+    setPlaying(false);
+    bump();
+    // 디바운스를 기다리지 않고 autosave 즉시 반영.
+    saveState({
+      size: data.size,
+      frames: data.frames,
+      currentFrame: data.currentFrame,
+      color: data.color,
+      reference: data.reference,
+      refOpacity: data.refOpacity,
+    });
+    setNotice({ text: `불러오기 완료 — ${data.size}×${data.size}, 프레임 ${data.frames.length}개`, error: false });
+  };
 
   // ----- coloring reference -----
   const loadReference = async (file) => {
@@ -775,6 +836,42 @@ export default function App() {
             저장
           </button>
         </div>
+      </div>
+
+      {/* project save/load */}
+      <div style={S.panel}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>프로젝트 (.emberpix)</div>
+          <button
+            style={{ ...S.btn(false), height: 36 }}
+            onClick={handleProjectSave}
+            title="프로젝트 파일로 저장 — 프레임·팔레트·밑그림 포함"
+          >
+            <Icon name="download" size={16} /> 저장
+          </button>
+          <button
+            style={{ ...S.btn(false), height: 36 }}
+            onClick={() => projectInputRef.current && projectInputRef.current.click()}
+            title="프로젝트 파일 불러오기 (.emberpix)"
+          >
+            <Icon name="upload" size={16} /> 불러오기
+          </button>
+        </div>
+        {notice && (
+          <div style={{ marginTop: 8, fontSize: 12, color: notice.error ? "#ff8a7a" : UI.dim }}>
+            {notice.text}
+          </div>
+        )}
+        <input
+          ref={projectInputRef}
+          type="file"
+          accept=".emberpix,application/json"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            handleProjectLoad(e.target.files && e.target.files[0]);
+            e.target.value = "";
+          }}
+        />
       </div>
 
       <div style={{ fontSize: 11, color: UI.dim, maxWidth: 560, width: "100%", textAlign: "center" }}>
