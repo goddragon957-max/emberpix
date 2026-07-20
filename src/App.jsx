@@ -5,6 +5,7 @@ import { render, renderTilePreview } from "./core/renderer.js";
 import { exportSheet } from "./core/exporter.js";
 import { saveState, loadState } from "./core/storage.js";
 import { saveProjectFile, parseProject } from "./core/project.js";
+import { normalizeRect, inRect, extractRect, clearRect, stampPixels, flipX } from "./core/selection.js";
 import { imageFromFile, sampleReference } from "./core/reference.js";
 import { TEMPLATES, templateToReference } from "./core/templates.js";
 
@@ -51,6 +52,7 @@ function Icon({ name, size = 18, color = "currentColor" }) {
     stop: "M6 6h12v12H6z",
     onion: "M12 3l8.5 5-8.5 5-8.5-5L12 3zm7 8.2l1.5 .8-8.5 5-8.5-5 1.5-.8L12 15l7-3.8z",
     image: "M3 4h18v16H3V4zm2 2v12h14V6H5zm2 10l3-4 2 2.5 1.5-2L17 16H7zm3-7a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8z",
+    select: "M4 4h4v2H6v2H4V4zm6 0h4v2h-4V4zm6 0h4v4h-2V6h-2V4zM4 10h2v4H4v-4zm14 0h2v4h-2v-4zM4 16h2v2h2v2H4v-4zm14 0h2v4h-4v-2h2v-2zm-8 2h4v2h-4v-2z",
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ display: "block" }}>
@@ -137,6 +139,17 @@ export default function App() {
   // { text, error } | null — 불러오기 결과 안내 (4초 후 자동 사라짐).
   const [notice, setNotice] = useState(null);
 
+  // 선택 도구 — 확정된 사각 선택 { x, y, w, h } | null. 픽셀 데이터가 아니므로 undo 대상 아님.
+  const [selRect, setSelRect] = useState(null);
+  const selRectRef = useRef(null); // 키보드 클로저용 최신값
+  // 진행 중 드래그: null | { mode:"select", x0,y0,x1,y1 }
+  //              | { mode:"move", float, w, h, fx, fy, grabDX, grabDY }
+  const dragRef = useRef(null);
+
+  useEffect(() => {
+    selRectRef.current = selRect;
+  }, [selRect]);
+
   // 각 프레임은 { pixels, history } — 히스토리가 프레임에 종속되어 undo가 현재 프레임에만 적용된다.
   const framesRef = useRef(
     (boot?.frames ?? [makeGrid(boot?.size ?? DEFAULT_SIZE)]).map((px) => ({
@@ -171,8 +184,18 @@ export default function App() {
       onionSkin && !playing && currentFrame > 0
         ? framesRef.current[currentFrame - 1].pixels
         : null;
-    render(canvas, active, size, showGrid, onion, showReference ? reference : null, refOpacity);
-  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference, refOpacity]);
+    // 선택 오버레이: 드래그 중이면 진행 상태, 아니면 확정 선택.
+    const drag = dragRef.current;
+    let overlay = null;
+    if (drag?.mode === "select") {
+      overlay = { ...normalizeRect(drag.x0, drag.y0, drag.x1, drag.y1), float: null };
+    } else if (drag?.mode === "move") {
+      overlay = { x: drag.fx, y: drag.fy, w: drag.w, h: drag.h, float: drag.float };
+    } else if (selRect) {
+      overlay = { ...selRect, float: null };
+    }
+    render(canvas, active, size, showGrid, onion, showReference ? reference : null, refOpacity, overlay);
+  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference, refOpacity, selRect]);
 
   // ----- tile preview (켜져 있으면 현재 프레임을 3×3 반복 렌더) -----
   useEffect(() => {
@@ -236,6 +259,15 @@ export default function App() {
     return [x, y];
   };
 
+  // 드래그 진행용 — 캔버스 밖으로 나가도 가장자리 셀로 클램프.
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const cellFromEventClamped = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = clamp(Math.floor(((e.clientX - rect.left) / rect.width) * size), 0, size - 1);
+    const y = clamp(Math.floor(((e.clientY - rect.top) / rect.height) * size), 0, size - 1);
+    return [x, y];
+  };
+
   const paintCell = (x, y) => {
     const px = activeFrame().pixels;
     const value = tool === "eraser" ? null : color;
@@ -249,6 +281,27 @@ export default function App() {
     if (!cellPos) return;
     const [x, y] = cellPos;
 
+    if (tool === "select") {
+      setPlaying(false);
+      const sel = selRectRef.current;
+      if (sel && inRect(sel, x, y)) {
+        // 선택 내부 드래그 = 이동. Alt+드래그 = 복사 이동 (원본 유지).
+        pushUndo();
+        const fr = activeFrame();
+        const float = extractRect(fr.pixels, size, sel);
+        if (!e.altKey) fr.pixels = clearRect(fr.pixels, size, sel);
+        dragRef.current = {
+          mode: "move", float, w: sel.w, h: sel.h,
+          fx: sel.x, fy: sel.y, grabDX: x - sel.x, grabDY: y - sel.y,
+        };
+      } else {
+        dragRef.current = { mode: "select", x0: x, y0: y, x1: x, y1: y };
+        setSelRect(null);
+      }
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 합성 이벤트 등 */ }
+      bump();
+      return;
+    }
     if (tool === "picker") {
       const c = activeFrame().pixels[y * size + x];
       if (c) setColor(c);
@@ -265,12 +318,26 @@ export default function App() {
     // pen / eraser stroke
     pushUndo();
     drawingRef.current = true;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 합성 이벤트 등 */ }
     paintCell(x, y);
     bump();
   };
 
   const handlePointerMove = (e) => {
+    const drag = dragRef.current;
+    if (drag) {
+      const [x, y] = cellFromEventClamped(e);
+      if (drag.mode === "select") {
+        drag.x1 = x;
+        drag.y1 = y;
+      } else {
+        // 플로트가 캔버스에 일부라도 걸치도록 느슨하게 클램프.
+        drag.fx = clamp(x - drag.grabDX, -(drag.w - 1), size - 1);
+        drag.fy = clamp(y - drag.grabDY, -(drag.h - 1), size - 1);
+      }
+      bump();
+      return;
+    }
     if (!drawingRef.current) return;
     const cellPos = cellFromEvent(e);
     if (!cellPos) return;
@@ -279,7 +346,65 @@ export default function App() {
   };
 
   const handlePointerUp = () => {
+    const drag = dragRef.current;
+    if (drag) {
+      dragRef.current = null;
+      if (drag.mode === "select") {
+        setSelRect(normalizeRect(drag.x0, drag.y0, drag.x1, drag.y1));
+      } else {
+        // 이동/복사 확정: 플로트를 현재 위치에 스탬프.
+        const fr = activeFrame();
+        fr.pixels = stampPixels(fr.pixels, size, drag.float, drag.w, drag.h, drag.fx, drag.fy);
+        setSelRect({ x: drag.fx, y: drag.fy, w: drag.w, h: drag.h });
+      }
+      bump();
+      return;
+    }
     drawingRef.current = false;
+  };
+
+  // ----- selection ops (픽셀을 바꾸는 조작은 모두 현재 프레임 undo 대상) -----
+  const clearSelection = () => {
+    setSelRect(null);
+    dragRef.current = null;
+  };
+  // 도구 전환 헬퍼 — 선택 도구를 떠나면 선택 해제.
+  const pickTool = (t) => {
+    setTool(t);
+    if (t !== "select") clearSelection();
+  };
+  const flipSelection = () => {
+    const sel = selRectRef.current;
+    if (!sel) return;
+    pushUndo();
+    const fr = activeFrame();
+    const data = extractRect(fr.pixels, size, sel);
+    fr.pixels = stampPixels(
+      clearRect(fr.pixels, size, sel), size,
+      flipX(data, sel.w, sel.h), sel.w, sel.h, sel.x, sel.y
+    );
+    bump();
+  };
+  const duplicateSelection = () => {
+    const sel = selRectRef.current;
+    if (!sel) return;
+    pushUndo();
+    const fr = activeFrame();
+    const data = extractRect(fr.pixels, size, sel);
+    // (+1,+1) 위치에 복사본을 찍고 선택을 복사본으로 옮긴다 → 바로 드래그로 이동 가능.
+    const nx = clamp(sel.x + 1, -(sel.w - 1), size - 1);
+    const ny = clamp(sel.y + 1, -(sel.h - 1), size - 1);
+    fr.pixels = stampPixels(fr.pixels, size, data, sel.w, sel.h, nx, ny);
+    setSelRect({ x: nx, y: ny, w: sel.w, h: sel.h });
+    bump();
+  };
+  const deleteSelection = () => {
+    const sel = selRectRef.current;
+    if (!sel) return;
+    pushUndo();
+    const fr = activeFrame();
+    fr.pixels = clearRect(fr.pixels, size, sel);
+    bump();
   };
 
   // ----- actions -----
@@ -292,6 +417,7 @@ export default function App() {
   const changeSize = (s) => {
     if (s === size) return;
     // 크기 변경은 전체 초기화 (단일 빈 프레임 + 히스토리 리셋).
+    clearSelection();
     framesRef.current = [{ pixels: makeGrid(s), history: createHistory() }];
     setCurrentFrame(0);
     frameIndexRef.current = 0;
@@ -338,6 +464,7 @@ export default function App() {
       return;
     }
     // 상태 복원 + undo 히스토리 초기화.
+    clearSelection();
     framesRef.current = data.frames.map((px) => ({ pixels: px, history: createHistory() }));
     frameIndexRef.current = data.currentFrame;
     setCurrentFrame(data.currentFrame);
@@ -383,9 +510,10 @@ export default function App() {
     setReference(null);
   };
 
-  // ----- frame ops -----
+  // ----- frame ops (전환/구조 변경 시 선택 해제 — 좌표가 다른 프레임에 새면 안 됨) -----
   const switchFrame = (i) => {
     setPlaying(false);
+    clearSelection();
     setCurrentFrame(i);
     frameIndexRef.current = i;
     bump();
@@ -394,6 +522,7 @@ export default function App() {
     const i = frameIndexRef.current + 1;
     framesRef.current.splice(i, 0, { pixels: makeGrid(size), history: createHistory() });
     setPlaying(false);
+    clearSelection();
     setCurrentFrame(i);
     frameIndexRef.current = i;
     bump();
@@ -405,6 +534,7 @@ export default function App() {
       history: createHistory(),
     });
     setPlaying(false);
+    clearSelection();
     setCurrentFrame(i);
     frameIndexRef.current = i;
     bump();
@@ -415,6 +545,7 @@ export default function App() {
     framesRef.current.splice(i, 1);
     const next = Math.min(i, framesRef.current.length - 1);
     setPlaying(false);
+    clearSelection();
     setCurrentFrame(next);
     frameIndexRef.current = next;
     bump();
@@ -433,20 +564,26 @@ export default function App() {
     bump();
   };
 
-  // keyboard shortcuts
+  // keyboard shortcuts — deleteSelection이 size를 캡처하므로 size 변경 시 재등록.
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         e.shiftKey ? redo() : undo();
-      } else if (e.key === "b") setTool("pen");
-      else if (e.key === "e") setTool("eraser");
-      else if (e.key === "g") setTool("fill");
-      else if (e.key === "i") setTool("picker");
+      } else if (e.key === "b") pickTool("pen");
+      else if (e.key === "e") pickTool("eraser");
+      else if (e.key === "g") pickTool("fill");
+      else if (e.key === "i") pickTool("picker");
+      else if (e.key === "m") pickTool("select");
+      else if (e.key === "Escape") clearSelection();
+      else if ((e.key === "Delete" || e.key === "Backspace") && selRectRef.current) {
+        e.preventDefault();
+        deleteSelection();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [size]);
 
   // ----- styles -----
   const S = {
@@ -576,6 +713,7 @@ export default function App() {
     { id: "eraser", icon: "eraser", label: "지우개" },
     { id: "fill", icon: "fill", label: "채우기" },
     { id: "picker", icon: "picker", label: "스포이드" },
+    { id: "select", icon: "select", label: "선택 — 드래그로 영역 지정, 내부 드래그 이동, Alt+드래그 복사" },
   ];
 
   return (
@@ -598,7 +736,7 @@ export default function App() {
       <div style={S.panel}>
         <div style={S.toolRow}>
           {toolDefs.map((t) => (
-            <button key={t.id} style={S.btn(tool === t.id)} onClick={() => setTool(t.id)} title={t.label}>
+            <button key={t.id} style={S.btn(tool === t.id)} onClick={() => pickTool(t.id)} title={t.label}>
               <Icon name={t.icon} />
             </button>
           ))}
@@ -621,6 +759,28 @@ export default function App() {
             <Icon name="trash" color="#ff8a7a" />
           </button>
         </div>
+
+        {/* 선택 조작 (선택이 있을 때만) */}
+        {selRect && (
+          <div style={{ ...S.toolRow, marginTop: 8 }}>
+            <span style={{ fontSize: 11, color: UI.dim, fontFamily: "monospace" }}>
+              선택 {selRect.w}×{selRect.h}
+            </span>
+            <div style={{ flex: 1 }} />
+            <button style={{ ...S.btn(false), height: 34 }} onClick={flipSelection} title="선택 영역 좌우반전">
+              <Icon name="mirror" size={16} /> 좌우반전
+            </button>
+            <button style={{ ...S.btn(false), height: 34 }} onClick={duplicateSelection} title="선택 영역 복제 — 복사본이 선택됨 (Alt+드래그 = 복사 이동)">
+              <Icon name="copy" size={16} /> 복제
+            </button>
+            <button style={{ ...S.btn(false, true), height: 34 }} onClick={deleteSelection} title="선택 영역 지우기 (Delete)">
+              <Icon name="trash" size={16} color="#ff8a7a" />
+            </button>
+            <button style={{ ...S.btn(false), height: 34 }} onClick={clearSelection} title="선택 해제 (Esc)">
+              해제
+            </button>
+          </div>
+        )}
       </div>
 
       {/* canvas */}
@@ -640,7 +800,7 @@ export default function App() {
       <div style={S.panel}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
           <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>프레임 · {frames.length}</div>
-          <button style={{ ...S.btn(playing), height: 32, minWidth: 32 }} onClick={() => setPlaying((p) => !p)} title={playing ? "정지" : "재생"}>
+          <button style={{ ...S.btn(playing), height: 32, minWidth: 32 }} onClick={() => { clearSelection(); setPlaying((p) => !p); }} title={playing ? "정지" : "재생"}>
             <Icon name={playing ? "stop" : "play"} color={playing ? "#16130f" : UI.text} size={16} />
           </button>
           <input
@@ -801,7 +961,7 @@ export default function App() {
         <div style={S.label}>Palette — Sweetie 16</div>
         <div style={S.paletteGrid}>
           {PALETTE.map((c) => (
-            <button key={c} style={S.swatch(c, color === c && tool !== "eraser")} onClick={() => { setColor(c); if (tool === "eraser") setTool("pen"); }} />
+            <button key={c} style={S.swatch(c, color === c && tool !== "eraser")} onClick={() => { setColor(c); if (tool === "eraser") pickTool("pen"); }} />
           ))}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
@@ -875,7 +1035,7 @@ export default function App() {
       </div>
 
       <div style={{ fontSize: 11, color: UI.dim, maxWidth: 560, width: "100%", textAlign: "center" }}>
-        단축키 · B 펜 / E 지우개 / G 채우기 / I 스포이드 / Ctrl+Z 취소
+        단축키 · B 펜 / E 지우개 / G 채우기 / I 스포이드 / M 선택 / Del 선택 지우기 / Esc 해제 / Ctrl+Z 취소
       </div>
     </div>
   );

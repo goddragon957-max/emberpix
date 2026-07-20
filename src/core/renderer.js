@@ -5,7 +5,9 @@ export function cellSize(size) {
   return Math.max(4, Math.floor(640 / size));
 }
 
-export function render(canvas, pixels, size, showGrid, onion = null, reference = null, refAlpha = 1) {
+// selection: { x, y, w, h, float } | null — 점선 테두리 오버레이.
+// float(w*h 픽셀 배열)가 있으면 이동 중인 선택 픽셀을 그리드 위에 겹쳐 그린다.
+export function render(canvas, pixels, size, showGrid, onion = null, reference = null, refAlpha = 1, selection = null) {
   const cell = cellSize(size);
   canvas.width = size * cell;
   canvas.height = size * cell;
@@ -75,6 +77,29 @@ export function render(canvas, pixels, size, showGrid, onion = null, reference =
       ctx.lineTo(size * cell, i * cell + 0.5);
       ctx.stroke();
     }
+  }
+
+  // 선택 영역 (플로트 픽셀 → 하이라이트 → 점선 테두리 순, 최상단)
+  if (selection) {
+    const { x, y, w, h, float } = selection;
+    if (float) {
+      for (let fy = 0; fy < h; fy++) {
+        for (let fx = 0; fx < w; fx++) {
+          const c = float[fy * w + fx];
+          if (c) {
+            ctx.fillStyle = c;
+            ctx.fillRect((x + fx) * cell, (y + fy) * cell, cell, cell);
+          }
+        }
+      }
+    }
+    ctx.fillStyle = "rgba(255,122,47,0.10)";
+    ctx.fillRect(x * cell, y * cell, w * cell, h * cell);
+    ctx.strokeStyle = "#ff7a2f";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(x * cell + 1, y * cell + 1, w * cell - 2, h * cell - 2);
+    ctx.setLineDash([]);
   }
 }
 
