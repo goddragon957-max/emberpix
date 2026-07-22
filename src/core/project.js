@@ -9,7 +9,7 @@ const APP_TAG = "emberpix";
 const FILE_VERSION = 1;
 
 // 상태를 JSON 직렬화해 .emberpix 파일로 다운로드.
-export function saveProjectFile({ size, frames, currentFrame, color, palette, reference, refOpacity }) {
+export function saveProjectFile({ size, frames, currentFrame, color, palette, reference, refOpacity, pattern }) {
   const data = {
     app: APP_TAG,
     version: FILE_VERSION,
@@ -20,6 +20,7 @@ export function saveProjectFile({ size, frames, currentFrame, color, palette, re
     palette,
     reference: reference ?? null,
     refOpacity: typeof refOpacity === "number" ? refOpacity : 1,
+    pattern: pattern ?? null,
   };
   const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
   const url = URL.createObjectURL(blob);

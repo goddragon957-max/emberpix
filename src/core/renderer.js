@@ -1,13 +1,40 @@
-// 캔버스 렌더링: 체커보드 → 픽셀 → 그리드 순서로 매 프레임 전체 다시 그린다 (SKILL.md).
+// 캔버스 렌더링: 체커보드 → 밑그림 → 픽셀 → 그리드 순서로 매 프레임 전체 다시 그린다 (SKILL.md).
 // 캔버스 내부 해상도 = size × cell, cell = max(4, floor(640 / size)).
 
 export function cellSize(size) {
   return Math.max(4, Math.floor(640 / size));
 }
 
-// selection: { x, y, w, h, float } | null — 점선 테두리 오버레이.
-// float(w*h 픽셀 배열)가 있으면 이동 중인 선택 픽셀을 그리드 위에 겹쳐 그린다.
-export function render(canvas, pixels, size, showGrid, onion = null, reference = null, refAlpha = 1, selection = null) {
+// #rrggbb 를 f만큼 밝게(f>0)/어둡게(f<0). 파싱 실패 시 원색 반환.
+function shade(hex, f) {
+  if (typeof hex !== "string" || hex.length !== 7 || hex[0] !== "#") return hex;
+  const t = f > 0 ? 255 : 0;
+  const a = Math.abs(f);
+  const ch = (i) => {
+    const v = parseInt(hex.slice(i, i + 2), 16);
+    return Math.round(v + (t - v) * a);
+  };
+  return `rgb(${ch(1)},${ch(3)},${ch(5)})`;
+}
+
+// 보석알(비드) 한 칸: 어두운 링 → 몸통 → 좌상단 하이라이트 → 반짝임.
+function drawBead(ctx, ox, oy, s, hex) {
+  const cx = ox + s / 2, cy = oy + s / 2, R = s * 0.46, PI2 = Math.PI * 2;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, PI2); ctx.fillStyle = shade(hex, -0.28); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, cy, R * 0.8, 0, PI2); ctx.fillStyle = hex; ctx.fill();
+  ctx.beginPath(); ctx.arc(cx - R * 0.26, cy - R * 0.26, R * 0.36, 0, PI2); ctx.fillStyle = shade(hex, 0.4); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx - R * 0.32, cy - R * 0.32, R * 0.15, 0, PI2); ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fill();
+}
+
+// opts: { showGrid, onion, reference, refAlpha, selection, gem, pattern }
+//  - onion: 이전 프레임 픽셀(30%)  - reference: 색칠공부 흑백 밝기 배열 + refAlpha
+//  - selection: { x,y,w,h,float } 점선 오버레이
+//  - gem: true면 픽셀을 보석알로 렌더  - pattern: 보석십자수 목표색 배열(가이드 점)
+export function render(canvas, pixels, size, opts = {}) {
+  const {
+    showGrid = false, onion = null, reference = null, refAlpha = 1,
+    selection = null, gem = false, pattern = null,
+  } = opts;
   const cell = cellSize(size);
   canvas.width = size * cell;
   canvas.height = size * cell;
@@ -22,7 +49,6 @@ export function render(canvas, pixels, size, showGrid, onion = null, reference =
   }
 
   // 색칠공부 참조 이미지 (흑백 밝기, 그린 픽셀 아래에 깔림 — 내보내기 미포함)
-  // refAlpha: 밑그림 투명도(0~1). 낮추면 체커보드가 비쳐 연한 가이드가 된다.
   if (reference) {
     ctx.globalAlpha = refAlpha;
     for (let y = 0; y < size; y++) {
@@ -35,6 +61,23 @@ export function render(canvas, pixels, size, showGrid, onion = null, reference =
       }
     }
     ctx.globalAlpha = 1;
+  }
+
+  // 보석십자수 도안 가이드: 아직 안 놓은 목표 칸을 흐린 점으로 표시.
+  if (gem && pattern) {
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = y * size + x;
+        if (pixels[i] === null && pattern[i]) {
+          ctx.globalAlpha = 0.3;
+          ctx.fillStyle = pattern[i];
+          ctx.beginPath();
+          ctx.arc(x * cell + cell / 2, y * cell + cell / 2, cell * 0.16, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
+    }
   }
 
   // 어니언 스킨 (이전 프레임 30% 투명도, 현재 픽셀 아래에 표시)
@@ -52,19 +95,22 @@ export function render(canvas, pixels, size, showGrid, onion = null, reference =
     ctx.globalAlpha = 1;
   }
 
-  // 픽셀
+  // 픽셀 (보석 모드면 비드, 아니면 사각)
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const c = pixels[y * size + x];
       if (c) {
-        ctx.fillStyle = c;
-        ctx.fillRect(x * cell, y * cell, cell, cell);
+        if (gem) drawBead(ctx, x * cell, y * cell, cell, c);
+        else {
+          ctx.fillStyle = c;
+          ctx.fillRect(x * cell, y * cell, cell, cell);
+        }
       }
     }
   }
 
-  // 그리드
-  if (showGrid) {
+  // 그리드 (보석 모드에서는 숨김 — 비드 사이가 지저분해짐)
+  if (showGrid && !gem) {
     ctx.strokeStyle = "rgba(255,255,255,0.07)";
     ctx.lineWidth = 1;
     for (let i = 1; i < size; i++) {

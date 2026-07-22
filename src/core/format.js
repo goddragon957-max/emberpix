@@ -1,5 +1,6 @@
 // 저장 데이터 공통 형식 검증 — 자동 저장(storage)과 .emberpix 파일(project)이 공유.
-// 필드: { size, frames, currentFrame, color, reference, refOpacity }
+// 필드: { size, frames, currentFrame, color, reference, refOpacity, pattern }
+//   pattern: 보석십자수 목표색 배열(hex|null) 또는 null — 선택 필드.
 
 export const VALID_SIZES = [16, 32, 64];
 export const FALLBACK_COLOR = "#ef7d57";
@@ -42,5 +43,7 @@ export function normalizeStateData(d) {
       typeof d.refOpacity === "number" && d.refOpacity >= 0.1 && d.refOpacity <= 1
         ? d.refOpacity
         : 1,
+    // 도안은 프레임과 동일한 셀 형식(hex|null). 형식 불일치면 null.
+    pattern: isValidFrame(d.pattern, d.size) ? d.pattern : null,
   };
 }

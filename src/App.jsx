@@ -8,6 +8,7 @@ import { saveProjectFile, parseProject } from "./core/project.js";
 import { normalizeRect, inRect, extractRect, clearRect, stampPixels, flipX } from "./core/selection.js";
 import { imageFromFile, sampleReference } from "./core/reference.js";
 import { TEMPLATES, templateToReference } from "./core/templates.js";
+import { BUILTIN_PATTERNS } from "./core/patterns.js";
 
 // ---------- constants ----------
 const PALETTE = [
@@ -53,6 +54,7 @@ function Icon({ name, size = 18, color = "currentColor" }) {
     onion: "M12 3l8.5 5-8.5 5-8.5-5L12 3zm7 8.2l1.5 .8-8.5 5-8.5-5 1.5-.8L12 15l7-3.8z",
     image: "M3 4h18v16H3V4zm2 2v12h14V6H5zm2 10l3-4 2 2.5 1.5-2L17 16H7zm3-7a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8z",
     select: "M4 4h4v2H6v2H4V4zm6 0h4v2h-4V4zm6 0h4v4h-2V6h-2V4zM4 10h2v4H4v-4zm14 0h2v4h-2v-4zM4 16h2v2h2v2H4v-4zm14 0h2v4h-4v-2h2v-2zm-8 2h4v2h-4v-2z",
+    gem: "M8 3h8l4 6-8 12L4 9l4-6zm.9 2L6.3 8.5h3.2L10.7 5H8.9zm6.2 0h-1.8l1.2 3.5h3.2L15.1 5zM8.5 8.5L12 17l3.5-8.5h-7z",
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ display: "block" }}>
@@ -102,6 +104,29 @@ function TemplateThumb({ tpl }) {
   return <canvas ref={ref} width={48} height={48} style={{ width: 48, height: 48, display: "block", imageRendering: "pixelated", borderRadius: 2 }} />;
 }
 
+// ---------- pattern thumbnail (보석십자수 도안: 색상 배열 미리보기) ----------
+function PatternThumb({ make, size = 32 }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const cv = ref.current;
+    if (!cv) return;
+    const ctx = cv.getContext("2d");
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const pat = make(size);
+    const cell = cv.width / size;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const c = pat[y * size + x];
+        if (c) {
+          ctx.fillStyle = c;
+          ctx.fillRect(x * cell, y * cell, cell, cell);
+        }
+      }
+    }
+  }, [make, size]);
+  return <canvas ref={ref} width={48} height={48} style={{ width: 48, height: 48, display: "block", imageRendering: "pixelated", borderRadius: 2 }} />;
+}
+
 // ---------- main ----------
 export default function App() {
   // 자동 저장본 복구 (없거나 손상 시 null → 기본값).
@@ -138,6 +163,13 @@ export default function App() {
   const projectInputRef = useRef(null);
   // { text, error } | null — 불러오기 결과 안내 (4초 후 자동 사라짐).
   const [notice, setNotice] = useState(null);
+
+  // 보석십자수 — gemMode: 픽셀을 보석알로 렌더 + 도안 보고 톡톡 채우기.
+  // pattern: 셀별 목표색(hex|null) 배열 또는 null. 도안이 있으면 페인트-바이-넘버.
+  const [gemMode, setGemMode] = useState(() => !!boot?.pattern);
+  const [pattern, setPattern] = useState(() => boot?.pattern ?? null);
+  const patternRef = useRef(pattern); // 포인터 클로저용 최신 도안
+  useEffect(() => { patternRef.current = pattern; }, [pattern]);
 
   // 선택 도구 — 확정된 사각 선택 { x, y, w, h } | null. 픽셀 데이터가 아니므로 undo 대상 아님.
   const [selRect, setSelRect] = useState(null);
@@ -194,8 +226,16 @@ export default function App() {
     } else if (selRect) {
       overlay = { ...selRect, float: null };
     }
-    render(canvas, active, size, showGrid, onion, showReference ? reference : null, refOpacity, overlay);
-  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference, refOpacity, selRect]);
+    render(canvas, active, size, {
+      showGrid,
+      onion,
+      reference: showReference ? reference : null,
+      refAlpha: refOpacity,
+      selection: overlay,
+      gem: gemMode,
+      pattern: gemMode ? pattern : null,
+    });
+  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference, refOpacity, selRect, gemMode, pattern]);
 
   // ----- tile preview (켜져 있으면 현재 프레임을 3×3 반복 렌더) -----
   useEffect(() => {
@@ -224,10 +264,11 @@ export default function App() {
         color,
         reference,
         refOpacity,
+        pattern,
       });
     }, AUTOSAVE_MS);
     return () => clearTimeout(t);
-  }, [version, size, color, currentFrame, reference, refOpacity]);
+  }, [version, size, color, currentFrame, reference, refOpacity, pattern]);
 
   // ----- history (현재 프레임 대상) -----
   const pushUndo = () => {
@@ -270,9 +311,20 @@ export default function App() {
 
   const paintCell = (x, y) => {
     const px = activeFrame().pixels;
-    const value = tool === "eraser" ? null : color;
-    px[y * size + x] = value;
-    if (mirrorX) px[y * size + (size - 1 - x)] = value;
+    const i = y * size + x;
+    if (tool === "eraser") {
+      px[i] = null;
+      if (mirrorX) px[y * size + (size - 1 - x)] = null;
+      return;
+    }
+    // 보석십자수: 도안이 있으면 그 칸의 목표색을 놓는다(배경 칸은 통과).
+    if (gemMode && patternRef.current) {
+      const target = patternRef.current[i];
+      if (target) px[i] = target;
+      return;
+    }
+    px[i] = color;
+    if (mirrorX) px[y * size + (size - 1 - x)] = color;
   };
 
   const handlePointerDown = (e) => {
@@ -426,6 +478,9 @@ export default function App() {
     if (refSource?.type === "image") setReference(sampleReference(refSource.img, s));
     else if (refSource?.type === "template") setReference(templateToReference(TEMPLATES[refSource.index], s));
     else setReference(null);
+    // 도안은 크기 종속 → 해제.
+    setPattern(null);
+    patternRef.current = null;
     setSize(s);
     bump();
   };
@@ -449,6 +504,7 @@ export default function App() {
       palette: PALETTE,
       reference,
       refOpacity,
+      pattern,
     });
 
   const handleProjectLoad = async (file) => {
@@ -474,6 +530,9 @@ export default function App() {
     setRefSource(null); // 파일에는 밑그림 원본(이미지/도안 출처)이 없다.
     setRefOpacity(data.refOpacity);
     setShowReference(true);
+    setPattern(data.pattern);
+    patternRef.current = data.pattern;
+    setGemMode(!!data.pattern);
     setPlaying(false);
     bump();
     // 디바운스를 기다리지 않고 autosave 즉시 반영.
@@ -484,6 +543,7 @@ export default function App() {
       color: data.color,
       reference: data.reference,
       refOpacity: data.refOpacity,
+      pattern: data.pattern,
     });
     setNotice({ text: `불러오기 완료 — ${data.size}×${data.size}, 프레임 ${data.frames.length}개`, error: false });
   };
@@ -508,6 +568,55 @@ export default function App() {
   const clearReference = () => {
     setRefSource(null);
     setReference(null);
+  };
+
+  // ----- 보석십자수 (도안 설정/해제) -----
+  const setActivePattern = (pat) => {
+    setPattern(pat);
+    patternRef.current = pat;
+    setGemMode(true);
+    setTool("pen");
+    clearSelection();
+  };
+  // 현재 그림을 도안으로: 스냅샷을 도안으로 삼고 캔버스를 비운다 → 따라 채우기.
+  const drawingToPattern = () => {
+    const snap = activeFrame().pixels.slice();
+    if (snap.every((c) => c === null)) {
+      setNotice({ text: "먼저 그림을 그려야 도안으로 만들 수 있어요.", error: true });
+      return;
+    }
+    pushUndo();
+    activeFrame().pixels = makeGrid(size);
+    setActivePattern(snap);
+    bump();
+  };
+  const applyBuiltinPattern = (i) => {
+    pushUndo();
+    activeFrame().pixels = makeGrid(size);
+    setActivePattern(BUILTIN_PATTERNS[i].make(size));
+    bump();
+  };
+  const clearPattern = () => {
+    setPattern(null);
+    patternRef.current = null;
+  };
+  // 도안 전체를 한 번에 채우기(미리보기/포기용).
+  const fillPattern = () => {
+    if (!pattern) return;
+    pushUndo();
+    activeFrame().pixels = pattern.slice();
+    bump();
+  };
+
+  // 진행률: 목표 칸 중 올바른 색이 놓인 수.
+  const patternProgress = () => {
+    if (!pattern) return null;
+    const px = frames[currentFrame]?.pixels || [];
+    let total = 0, done = 0;
+    for (let i = 0; i < pattern.length; i++) {
+      if (pattern[i]) { total++; if (px[i] === pattern[i]) done++; }
+    }
+    return { total, done };
   };
 
   // ----- frame ops (전환/구조 변경 시 선택 해제 — 좌표가 다른 프레임에 새면 안 됨) -----
@@ -715,6 +824,9 @@ export default function App() {
     { id: "picker", icon: "picker", label: "스포이드" },
     { id: "select", icon: "select", label: "선택 — 드래그로 영역 지정, 내부 드래그 이동, Alt+드래그 복사" },
   ];
+
+  const prog = patternProgress();
+  const progDone = prog && prog.done === prog.total && prog.total > 0;
 
   return (
     <div style={S.app}>
@@ -954,6 +1066,79 @@ export default function App() {
             );
           })}
         </div>
+      </div>
+
+      {/* 보석십자수 */}
+      <div style={S.panel}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>보석십자수</div>
+          <button
+            style={{ ...S.btn(gemMode), height: 34 }}
+            onClick={() => setGemMode((v) => !v)}
+            title="보석 모드 — 픽셀을 반짝이는 보석알로 표시"
+          >
+            <Icon name="gem" size={16} color={gemMode ? "#16130f" : UI.text} /> 보석 모드
+          </button>
+        </div>
+
+        {/* 진행률 */}
+        {gemMode && prog && (
+          <div style={{ marginTop: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+              <Icon name="gem" size={13} color={progDone ? UI.ember : UI.dim} />
+              <span style={{ fontSize: 12, color: progDone ? UI.ember : UI.dim, fontFamily: "monospace" }}>
+                {prog.done} / {prog.total}
+              </span>
+              {progDone && <span style={{ fontSize: 12, color: UI.ember }}>완성! ✨</span>}
+            </div>
+            <div style={{ height: 6, background: UI.panelHi, borderRadius: 3, overflow: "hidden" }}>
+              <div style={{
+                height: "100%",
+                width: `${prog.total ? (prog.done / prog.total) * 100 : 0}%`,
+                background: UI.ember,
+                transition: "width 0.15s",
+              }} />
+            </div>
+          </div>
+        )}
+
+        <div style={{ ...S.toolRow, marginTop: 10 }}>
+          <button style={{ ...S.btn(false), height: 34 }} onClick={drawingToPattern} title="지금 그린 그림을 도안으로 바꾸고 캔버스를 비웁니다">
+            <Icon name="download" size={16} /> 현재 그림을 도안으로
+          </button>
+          {pattern && (
+            <>
+              <div style={{ flex: 1 }} />
+              <button style={{ ...S.btn(false), height: 34 }} onClick={fillPattern} title="도안대로 한 번에 채우기">
+                전부 채우기
+              </button>
+              <button style={{ ...S.btn(false, true), height: 34 }} onClick={clearPattern} title="도안 지우기">
+                <Icon name="trash" size={16} color="#ff8a7a" />
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* 내장 도안 */}
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 10, paddingBottom: 4 }}>
+          {BUILTIN_PATTERNS.map((p, i) => (
+            <div
+              key={p.name}
+              style={{ ...S.thumb(false), lineHeight: "normal" }}
+              onClick={() => applyBuiltinPattern(i)}
+              title={`${p.name} 도안으로 보석십자수 시작`}
+            >
+              <PatternThumb make={p.make} size={size} />
+              <div style={{ fontSize: 10, color: UI.dim, textAlign: "center", marginTop: 3 }}>{p.name}</div>
+            </div>
+          ))}
+        </div>
+
+        {gemMode && !pattern && (
+          <div style={{ fontSize: 11, color: UI.dim, marginTop: 8, lineHeight: 1.5 }}>
+            도안을 고르면 흐린 점 위를 펜으로 톡톡 눌러 보석을 채웁니다. 터치도 됩니다.
+          </div>
+        )}
       </div>
 
       {/* palette */}
