@@ -9,6 +9,9 @@ import { normalizeRect, inRect, extractRect, clearRect, stampPixels, flipX } fro
 import { imageFromFile, sampleReference } from "./core/reference.js";
 import { TEMPLATES, templateToReference } from "./core/templates.js";
 import { BUILTIN_PATTERNS } from "./core/patterns.js";
+import {
+  MIN_SCALE, MAX_SCALE, FIT_VIEW, clampView, zoomBy, pinchView, pointerSpan, cssTransform,
+} from "./core/view.js";
 
 // ---------- constants ----------
 const PALETTE = [
@@ -164,6 +167,16 @@ export default function App() {
   // { text, error } | null — 불러오기 결과 안내 (4초 후 자동 사라짐).
   const [notice, setNotice] = useState(null);
 
+  // 캔버스 뷰(확대/이동). 표시는 CSS transform, 픽셀 데이터는 무관.
+  const [view, setView] = useState(FIT_VIEW);
+  const wrapRef = useRef(null);
+  // 활성 포인터 목록(멀티터치 판별용) + 제스처 스냅샷.
+  const pointersRef = useRef(new Map());
+  const gestureRef = useRef(null);
+  // 제스처 중이거나 손가락이 남아있는 동안엔 그리기를 막는다.
+  const blockDrawRef = useRef(false);
+  const wrapWidth = () => (wrapRef.current ? wrapRef.current.getBoundingClientRect().width : 0);
+
   // 보석십자수 — gemMode: 픽셀을 보석알로 렌더 + 도안 보고 톡톡 채우기.
   // pattern: 셀별 목표색(hex|null) 배열 또는 null. 도안이 있으면 페인트-바이-넘버.
   const [gemMode, setGemMode] = useState(() => !!boot?.pattern);
@@ -245,6 +258,30 @@ export default function App() {
     renderTilePreview(cv, framesRef.current[currentFrame].pixels, size);
   }, [tilePreview, version, currentFrame, size]);
 
+  // 휠 확대 (커서 기준). React의 onWheel은 passive라 preventDefault가 안 먹어 네이티브로 붙인다.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      setView((v) => zoomBy(v, factor, e.clientX - r.left, e.clientY - r.top, r.width));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // 창 크기가 바뀌면 이동량(px 기준)을 다시 제한한다.
+  useEffect(() => {
+    const onResize = () => {
+      const w = wrapWidth();
+      if (w) setView((v) => clampView(v, w));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   // ----- playback -----
   useEffect(() => {
     if (!playing) return;
@@ -309,6 +346,44 @@ export default function App() {
     return [x, y];
   };
 
+  // 뷰포트(래퍼) 좌상단 기준 좌표 — 확대/이동 계산용.
+  const viewPoint = (e) => {
+    const r = wrapRef.current.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+
+  // 두 번째 손가락이 닿으면 진행 중인 조작을 되돌린다 — 확대하려다 점이 찍히는 사고 방지.
+  // down에서 pushUndo를 이미 했으므로 undo() 한 번이면 스트로크 이전 상태로 정확히 복원된다.
+  const cancelStroke = () => {
+    const drag = dragRef.current;
+    if (drag) {
+      dragRef.current = null;
+      if (drag.mode === "move") undo(); // 이동은 down에서 pushUndo 했음
+      else bump();
+      return;
+    }
+    if (drawingRef.current) {
+      drawingRef.current = false;
+      undo();
+    }
+  };
+
+  const beginGesture = () => {
+    cancelStroke();
+    blockDrawRef.current = true;
+    const [a, b] = [...pointersRef.current.values()];
+    const { dist, mid } = pointerSpan(a, b);
+    gestureRef.current = { view, dist, mid };
+  };
+
+  const applyZoom = (factor, anchor) => {
+    const w = wrapWidth();
+    if (!w) return;
+    const a = anchor || { x: w / 2, y: w / 2 };
+    setView((v) => zoomBy(v, factor, a.x, a.y, w));
+  };
+  const resetView = () => setView(FIT_VIEW);
+
   const paintCell = (x, y) => {
     const px = activeFrame().pixels;
     const i = y * size + x;
@@ -329,6 +404,14 @@ export default function App() {
 
   const handlePointerDown = (e) => {
     e.preventDefault();
+    // 멀티터치 추적: 2개 이상이면 그리기 대신 확대/이동 제스처.
+    pointersRef.current.set(e.pointerId, viewPoint(e));
+    if (pointersRef.current.size >= 2) {
+      if (pointersRef.current.size === 2) beginGesture();
+      return;
+    }
+    if (blockDrawRef.current) return;
+
     const cellPos = cellFromEvent(e);
     if (!cellPos) return;
     const [x, y] = cellPos;
@@ -376,6 +459,18 @@ export default function App() {
   };
 
   const handlePointerMove = (e) => {
+    // 제스처 중이면 뷰만 갱신하고 그리기는 건너뛴다.
+    if (pointersRef.current.has(e.pointerId)) {
+      pointersRef.current.set(e.pointerId, viewPoint(e));
+    }
+    if (gestureRef.current && pointersRef.current.size >= 2) {
+      const [a, b] = [...pointersRef.current.values()];
+      const { dist, mid } = pointerSpan(a, b);
+      const w = wrapWidth();
+      if (w) setView(pinchView(gestureRef.current, dist, mid, w));
+      return;
+    }
+
     const drag = dragRef.current;
     if (drag) {
       const [x, y] = cellFromEventClamped(e);
@@ -397,7 +492,13 @@ export default function App() {
     bump();
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (e) => {
+    if (e && e.pointerId !== undefined) pointersRef.current.delete(e.pointerId);
+    if (pointersRef.current.size < 2) gestureRef.current = null;
+    // 손가락이 모두 떨어져야 다시 그릴 수 있다 (제스처 후 한 손가락만 남아 선이 그어지는 것 방지).
+    if (pointersRef.current.size === 0) blockDrawRef.current = false;
+    else if (blockDrawRef.current) return;
+
     const drag = dragRef.current;
     if (drag) {
       dragRef.current = null;
@@ -481,6 +582,7 @@ export default function App() {
     // 도안은 크기 종속 → 해제.
     setPattern(null);
     patternRef.current = null;
+    setView(FIT_VIEW);
     setSize(s);
     bump();
   };
@@ -534,6 +636,7 @@ export default function App() {
     patternRef.current = data.pattern;
     setGemMode(!!data.pattern);
     setPlaying(false);
+    setView(FIT_VIEW);
     bump();
     // 디바운스를 기다리지 않고 autosave 즉시 반영.
     saveState({
@@ -760,17 +863,24 @@ export default function App() {
       width: "100%",
       maxWidth: 560,
       marginBottom: 12,
-    },
-    canvas: {
-      width: "100%",
-      display: "block",
-      imageRendering: "pixelated",
+      // 확대 시 캔버스가 레이아웃을 밀지 않도록 정사각 뷰포트로 가둔다.
+      aspectRatio: "1",
+      position: "relative",
+      overflow: "hidden",
       touchAction: "none",
       border: `1px solid ${UI.border}`,
       borderRadius: 4,
       boxShadow: `4px 4px 0 rgba(0,0,0,0.35)`,
-      cursor: "crosshair",
       background: UI.panel,
+    },
+    canvas: {
+      width: "100%",
+      height: "100%",
+      display: "block",
+      imageRendering: "pixelated",
+      touchAction: "none",
+      transformOrigin: "0 0",
+      cursor: "crosshair",
     },
     paletteGrid: {
       display: "grid",
@@ -896,16 +1006,48 @@ export default function App() {
       </div>
 
       {/* canvas */}
-      <div style={S.canvasWrap}>
+      <div ref={wrapRef} style={S.canvasWrap}>
         <canvas
           ref={canvasRef}
-          style={S.canvas}
+          style={{ ...S.canvas, transform: cssTransform(view) }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           onContextMenu={(e) => e.preventDefault()}
         />
+      </div>
+
+      {/* zoom controls */}
+      <div style={{ ...S.panel, display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>확대 · 두 손가락으로 확대/이동</div>
+        <button
+          style={{ ...S.btn(false), height: 34 }}
+          onClick={() => applyZoom(1 / 1.5)}
+          disabled={view.scale <= MIN_SCALE}
+          title="축소"
+        >
+          −
+        </button>
+        <span style={{ fontSize: 12, color: UI.dim, fontFamily: "monospace", width: 46, textAlign: "center" }}>
+          {view.scale.toFixed(1)}×
+        </span>
+        <button
+          style={{ ...S.btn(false), height: 34 }}
+          onClick={() => applyZoom(1.5)}
+          disabled={view.scale >= MAX_SCALE}
+          title="확대"
+        >
+          +
+        </button>
+        <button
+          style={{ ...S.btn(false), height: 34 }}
+          onClick={resetView}
+          disabled={view.scale === 1 && view.tx === 0 && view.ty === 0}
+          title="화면 맞춤"
+        >
+          맞춤
+        </button>
       </div>
 
       {/* frames */}
