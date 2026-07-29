@@ -26,14 +26,15 @@ function drawBead(ctx, ox, oy, s, hex) {
   ctx.beginPath(); ctx.arc(cx - R * 0.32, cy - R * 0.32, R * 0.15, 0, PI2); ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fill();
 }
 
-// opts: { showGrid, onion, reference, refAlpha, selection, gem, pattern }
+// opts: { showGrid, onion, reference, refAlpha, selection, gem, pattern, preview }
 //  - onion: 이전 프레임 픽셀(30%)  - reference: 색칠공부 흑백 밝기 배열 + refAlpha
 //  - selection: { x,y,w,h,float } 점선 오버레이
 //  - gem: true면 픽셀을 보석알로 렌더  - pattern: 보석십자수 목표색 배열(가이드 점)
+//  - preview: { points:[[x,y]...], color } 도형 확정 전 미리보기(픽셀 데이터 불변)
 export function render(canvas, pixels, size, opts = {}) {
   const {
     showGrid = false, onion = null, reference = null, refAlpha = 1,
-    selection = null, gem = false, pattern = null,
+    selection = null, gem = false, pattern = null, preview = null,
   } = opts;
   const cell = cellSize(size);
   canvas.width = size * cell;
@@ -123,6 +124,17 @@ export function render(canvas, pixels, size, opts = {}) {
       ctx.lineTo(size * cell, i * cell + 0.5);
       ctx.stroke();
     }
+  }
+
+  // 도형 미리보기 — 확정 전이므로 오버레이로만 그린다(픽셀 데이터 오염 금지).
+  if (preview && preview.points) {
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = preview.color;
+    for (const [x, y] of preview.points) {
+      if (x < 0 || y < 0 || x >= size || y >= size) continue;
+      ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+    ctx.globalAlpha = 1;
   }
 
   // 선택 영역 (플로트 픽셀 → 하이라이트 → 점선 테두리 순, 최상단)

@@ -6,6 +6,7 @@ import { exportSheet } from "./core/exporter.js";
 import { saveState, loadState } from "./core/storage.js";
 import { saveProjectFile, parseProject } from "./core/project.js";
 import { normalizeRect, inRect, extractRect, clearRect, stampPixels, flipX } from "./core/selection.js";
+import { linePoints, rectPoints, ellipsePoints, expandBrush, replaceColor } from "./core/shapes.js";
 import { imageFromFile, sampleReference } from "./core/reference.js";
 import { TEMPLATES, templateToReference } from "./core/templates.js";
 import { BUILTIN_PATTERNS } from "./core/patterns.js";
@@ -58,6 +59,10 @@ function Icon({ name, size = 18, color = "currentColor" }) {
     image: "M3 4h18v16H3V4zm2 2v12h14V6H5zm2 10l3-4 2 2.5 1.5-2L17 16H7zm3-7a1.4 1.4 0 1 1 0 2.8 1.4 1.4 0 0 1 0-2.8z",
     select: "M4 4h4v2H6v2H4V4zm6 0h4v2h-4V4zm6 0h4v4h-2V6h-2V4zM4 10h2v4H4v-4zm14 0h2v4h-2v-4zM4 16h2v2h2v2H4v-4zm14 0h2v4h-4v-2h2v-2zm-8 2h4v2h-4v-2z",
     gem: "M8 3h8l4 6-8 12L4 9l4-6zm.9 2L6.3 8.5h3.2L10.7 5H8.9zm6.2 0h-1.8l1.2 3.5h3.2L15.1 5zM8.5 8.5L12 17l3.5-8.5h-7z",
+    line: "M4 18.6L18.6 4 20 5.4 5.4 20z",
+    rect: "M3 5h18v14H3V5zm2 2v10h14V7H5z",
+    circle: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2a7 7 0 1 1 0 14 7 7 0 0 1 0-14z",
+    swap: "M7 7h8V4l5 4-5 4V9H7v4H5V7h2zm10 10H9v3l-5-4 5-4v3h8v-4h2v6h-2z",
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ display: "block" }}>
@@ -167,6 +172,12 @@ export default function App() {
   // { text, error } | null — 불러오기 결과 안내 (4초 후 자동 사라짐).
   const [notice, setNotice] = useState(null);
 
+  // 그리기 옵션 — 브러시 크기(정사각 n×n), 도형 채움 여부.
+  const [brushSize, setBrushSize] = useState(1);
+  const [shapeFilled, setShapeFilled] = useState(false);
+  // 도형 드래그 진행 상태 { x0, y0, x1, y1 } | null. 확정 전엔 오버레이로만 보인다.
+  const shapeRef = useRef(null);
+
   // 캔버스 뷰(확대/이동). 표시는 CSS transform, 픽셀 데이터는 무관.
   const [view, setView] = useState(FIT_VIEW);
   const wrapRef = useRef(null);
@@ -247,6 +258,7 @@ export default function App() {
       selection: overlay,
       gem: gemMode,
       pattern: gemMode ? pattern : null,
+      preview: shapeRef.current ? { points: shapeCells(shapeRef.current), color } : null,
     });
   }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference, refOpacity, selRect, gemMode, pattern]);
 
@@ -331,6 +343,8 @@ export default function App() {
   const cellFromEvent = (e) => {
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
+    // 캔버스가 숨겨져 0 크기면 좌표가 Infinity가 된다 — 계산 자체를 포기한다.
+    if (!rect.width || !rect.height) return null;
     const x = Math.floor(((e.clientX - rect.left) / rect.width) * size);
     const y = Math.floor(((e.clientY - rect.top) / rect.height) * size);
     if (x < 0 || y < 0 || x >= size || y >= size) return null;
@@ -341,6 +355,7 @@ export default function App() {
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const cellFromEventClamped = (e) => {
     const rect = canvasRef.current.getBoundingClientRect();
+    if (!rect.width || !rect.height) return null;
     const x = clamp(Math.floor(((e.clientX - rect.left) / rect.width) * size), 0, size - 1);
     const y = clamp(Math.floor(((e.clientY - rect.top) / rect.height) * size), 0, size - 1);
     return [x, y];
@@ -355,6 +370,12 @@ export default function App() {
   // 두 번째 손가락이 닿으면 진행 중인 조작을 되돌린다 — 확대하려다 점이 찍히는 사고 방지.
   // down에서 pushUndo를 이미 했으므로 undo() 한 번이면 스트로크 이전 상태로 정확히 복원된다.
   const cancelStroke = () => {
+    // 도형은 아직 확정 전이라 미리보기만 버리면 된다(undo 불필요).
+    if (shapeRef.current) {
+      shapeRef.current = null;
+      bump();
+      return;
+    }
     const drag = dragRef.current;
     if (drag) {
       dragRef.current = null;
@@ -384,22 +405,49 @@ export default function App() {
   };
   const resetView = () => setView(FIT_VIEW);
 
+  // 한 셀에 붓질 — 브러시 크기만큼 확장해 찍는다. 캔버스 밖은 무시.
   const paintCell = (x, y) => {
     const px = activeFrame().pixels;
-    const i = y * size + x;
-    if (tool === "eraser") {
-      px[i] = null;
-      if (mirrorX) px[y * size + (size - 1 - x)] = null;
-      return;
+    const cells = expandBrush([[x, y]], brushSize);
+    for (const [cx, cy] of cells) {
+      if (cx < 0 || cy < 0 || cx >= size || cy >= size) continue;
+      const i = cy * size + cx;
+      if (tool === "eraser") {
+        px[i] = null;
+        if (mirrorX) px[cy * size + (size - 1 - cx)] = null;
+        continue;
+      }
+      // 보석십자수: 도안이 있으면 그 칸의 목표색을 놓는다(배경 칸은 통과).
+      if (gemMode && patternRef.current) {
+        const target = patternRef.current[i];
+        if (target) px[i] = target;
+        continue;
+      }
+      px[i] = color;
+      if (mirrorX) px[cy * size + (size - 1 - cx)] = color;
     }
-    // 보석십자수: 도안이 있으면 그 칸의 목표색을 놓는다(배경 칸은 통과).
-    if (gemMode && patternRef.current) {
-      const target = patternRef.current[i];
-      if (target) px[i] = target;
-      return;
+  };
+
+  // ----- 도형 도구 -----
+  const isShapeTool = (t) => t === "line" || t === "rect" || t === "ellipse";
+
+  // 진행 중인 드래그의 셀 목록. 채움이 아닐 때만 브러시 두께를 적용한다.
+  const shapeCells = (s) => {
+    let pts;
+    if (tool === "line") pts = linePoints(s.x0, s.y0, s.x1, s.y1);
+    else if (tool === "rect") pts = rectPoints(s.x0, s.y0, s.x1, s.y1, shapeFilled);
+    else pts = ellipsePoints(s.x0, s.y0, s.x1, s.y1, shapeFilled);
+    const thick = tool === "line" || !shapeFilled;
+    return thick ? expandBrush(pts, brushSize) : pts;
+  };
+
+  const paintPoints = (pts, value) => {
+    const px = activeFrame().pixels;
+    for (const [x, y] of pts) {
+      if (x < 0 || y < 0 || x >= size || y >= size) continue;
+      px[y * size + x] = value;
+      if (mirrorX) px[y * size + (size - 1 - x)] = value;
     }
-    px[i] = color;
-    if (mirrorX) px[y * size + (size - 1 - x)] = color;
   };
 
   const handlePointerDown = (e) => {
@@ -437,6 +485,21 @@ export default function App() {
       bump();
       return;
     }
+    if (isShapeTool(tool)) {
+      // 확정은 up에서. 여기서는 미리보기만 시작한다(pushUndo도 up에서 1회).
+      shapeRef.current = { x0: x, y0: y, x1: x, y1: y };
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 합성 이벤트 등 */ }
+      bump();
+      return;
+    }
+    if (tool === "replace") {
+      const from = activeFrame().pixels[y * size + x];
+      if (from === null || from === color) return; // 빈 칸/같은 색은 무시
+      pushUndo();
+      activeFrame().pixels = replaceColor(activeFrame().pixels, from, color);
+      bump();
+      return;
+    }
     if (tool === "picker") {
       const c = activeFrame().pixels[y * size + x];
       if (c) setColor(c);
@@ -471,9 +534,21 @@ export default function App() {
       return;
     }
 
+    // 도형 드래그: 끝점만 갱신하고 오버레이 미리보기를 다시 그린다.
+    if (shapeRef.current) {
+      const p = cellFromEventClamped(e);
+      if (!p) return;
+      shapeRef.current.x1 = p[0];
+      shapeRef.current.y1 = p[1];
+      bump();
+      return;
+    }
+
     const drag = dragRef.current;
     if (drag) {
-      const [x, y] = cellFromEventClamped(e);
+      const p = cellFromEventClamped(e);
+      if (!p) return;
+      const [x, y] = p;
       if (drag.mode === "select") {
         drag.x1 = x;
         drag.y1 = y;
@@ -498,6 +573,16 @@ export default function App() {
     // 손가락이 모두 떨어져야 다시 그릴 수 있다 (제스처 후 한 손가락만 남아 선이 그어지는 것 방지).
     if (pointersRef.current.size === 0) blockDrawRef.current = false;
     else if (blockDrawRef.current) return;
+
+    // 도형 확정: 미리보기 셀을 실제로 찍는다 (undo 1회).
+    if (shapeRef.current) {
+      const cells = shapeCells(shapeRef.current);
+      shapeRef.current = null;
+      pushUndo();
+      paintPoints(cells, color);
+      bump();
+      return;
+    }
 
     const drag = dragRef.current;
     if (drag) {
@@ -524,6 +609,7 @@ export default function App() {
   // 도구 전환 헬퍼 — 선택 도구를 떠나면 선택 해제.
   const pickTool = (t) => {
     setTool(t);
+    shapeRef.current = null; // 진행 중 도형 미리보기 폐기
     if (t !== "select") clearSelection();
   };
   const flipSelection = () => {
@@ -787,7 +873,13 @@ export default function App() {
       else if (e.key === "g") pickTool("fill");
       else if (e.key === "i") pickTool("picker");
       else if (e.key === "m") pickTool("select");
-      else if (e.key === "Escape") clearSelection();
+      else if (e.key === "l") pickTool("line");
+      else if (e.key === "r") pickTool("rect");
+      else if (e.key === "o") pickTool("ellipse");
+      else if (e.key === "x") pickTool("replace");
+      else if (e.key === "+" || e.key === "=") setBrushSize((n) => Math.min(4, n + 1));
+      else if (e.key === "-" || e.key === "_") setBrushSize((n) => Math.max(1, n - 1));
+      else if (e.key === "Escape") { clearSelection(); shapeRef.current = null; bump(); }
       else if ((e.key === "Delete" || e.key === "Backspace") && selRectRef.current) {
         e.preventDefault();
         deleteSelection();
@@ -932,6 +1024,10 @@ export default function App() {
     { id: "eraser", icon: "eraser", label: "지우개" },
     { id: "fill", icon: "fill", label: "채우기" },
     { id: "picker", icon: "picker", label: "스포이드" },
+    { id: "line", icon: "line", label: "직선 (L)" },
+    { id: "rect", icon: "rect", label: "사각형 (R)" },
+    { id: "ellipse", icon: "circle", label: "원/타원 (O)" },
+    { id: "replace", icon: "swap", label: "색 교체 (X) — 클릭한 색을 현재 색으로 전부 바꿈" },
     { id: "select", icon: "select", label: "선택 — 드래그로 영역 지정, 내부 드래그 이동, Alt+드래그 복사" },
   ];
 
@@ -980,6 +1076,33 @@ export default function App() {
           <button style={S.btn(false, true)} onClick={clearCanvas} title="전체 지우기">
             <Icon name="trash" color="#ff8a7a" />
           </button>
+        </div>
+
+        {/* 브러시 크기 · 도형 채움 */}
+        <div style={{ ...S.toolRow, marginTop: 8 }}>
+          <span style={{ fontSize: 11, color: UI.dim, letterSpacing: 1 }}>브러시</span>
+          {[1, 2, 3, 4].map((n) => (
+            <button
+              key={n}
+              style={{ ...S.btn(brushSize === n), height: 30, minWidth: 30, padding: 0 }}
+              onClick={() => setBrushSize(n)}
+              title={`${n}×${n} 브러시`}
+            >
+              {n}
+            </button>
+          ))}
+          {(tool === "rect" || tool === "ellipse") && (
+            <>
+              <div style={{ width: 1, height: 22, background: UI.border, margin: "0 4px" }} />
+              <button
+                style={{ ...S.btn(shapeFilled), height: 30 }}
+                onClick={() => setShapeFilled((v) => !v)}
+                title="도형 내부 채우기"
+              >
+                {shapeFilled ? "채움" : "테두리"}
+              </button>
+            </>
+          )}
         </div>
 
         {/* 선택 조작 (선택이 있을 때만) */}
@@ -1362,7 +1485,8 @@ export default function App() {
       </div>
 
       <div style={{ fontSize: 11, color: UI.dim, maxWidth: 560, width: "100%", textAlign: "center" }}>
-        단축키 · B 펜 / E 지우개 / G 채우기 / I 스포이드 / M 선택 / Del 선택 지우기 / Esc 해제 / Ctrl+Z 취소
+        단축키 · B 펜 / E 지우개 / G 채우기 / I 스포이드 / L 직선 / R 사각 / O 원 / X 색교체 / M 선택
+        <br />+ − 브러시 크기 / Del 선택 지우기 / Esc 해제 / Ctrl+Z 취소
       </div>
     </div>
   );
