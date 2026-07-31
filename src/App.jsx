@@ -2,7 +2,9 @@ import React, { useState, useRef, useEffect } from "react";
 import { makeGrid, floodFill } from "./core/grid.js";
 import { createHistory } from "./core/history.js";
 import { render, renderTilePreview } from "./core/renderer.js";
-import { exportSheet } from "./core/exporter.js";
+import {
+  exportSheet, exportSheetWithMeta, exportGif, copyFrameToClipboard,
+} from "./core/exporter.js";
 import { saveState, loadState } from "./core/storage.js";
 import { saveProjectFile, parseProject } from "./core/project.js";
 import { normalizeRect, inRect, extractRect, clearRect, stampPixels, flipX } from "./core/selection.js";
@@ -713,8 +715,40 @@ export default function App() {
     bump();
   };
 
-  const handleExport = () =>
-    exportSheet(framesRef.current.map((f) => f.pixels), size, exportScale);
+  const allPixels = () => framesRef.current.map((f) => f.pixels);
+
+  const handleExport = () => exportSheet(allPixels(), size, exportScale);
+
+  // 시트 PNG + 프레임 좌표/FPS가 담긴 JSON 메타를 함께 저장.
+  const handleExportMeta = () => {
+    const meta = exportSheetWithMeta(allPixels(), size, exportScale, fps);
+    setNotice({
+      text: `시트+메타 저장 — ${meta.frameCount}프레임 · ${meta.sheetWidth}×${meta.sheetHeight}px · ${meta.fps}fps`,
+      error: false,
+    });
+  };
+
+  // 애니메이션 GIF (무의존 인코더). 색이 255개를 넘으면 예외 → 안내.
+  const handleGif = () => {
+    try {
+      const bytes = exportGif(allPixels(), size, { scale: exportScale, fps });
+      setNotice({
+        text: `GIF 저장 — ${framesRef.current.length}프레임 · ${fps}fps · ${(bytes / 1024).toFixed(1)}KB`,
+        error: false,
+      });
+    } catch (e) {
+      setNotice({ text: `GIF 저장 실패 — ${e.message}`, error: true });
+    }
+  };
+
+  const handleCopy = async () => {
+    const done = await copyFrameToClipboard(activeFrame().pixels, size, exportScale);
+    setNotice(
+      done
+        ? { text: `현재 프레임을 클립보드에 복사했어요 (${size * exportScale}×${size * exportScale}px).`, error: false }
+        : { text: "클립보드 이미지 복사를 지원하지 않는 브라우저예요.", error: true }
+    );
+  };
 
   // ----- project save/load (.emberpix) -----
   useEffect(() => {
@@ -1881,11 +1915,45 @@ export default function App() {
               <option key={s} value={s}>{s}×</option>
             ))}
           </select>
-          <button style={{ ...S.btn(true), height: 36 }} onClick={handleExport}>
+          <button style={{ ...S.btn(true), height: 36 }} onClick={handleExport} title="투명 PNG로 저장">
             <Icon name="download" color="#16130f" />
             저장
           </button>
         </div>
+
+        <div style={{ ...S.toolRow, marginTop: 8 }}>
+          <button
+            style={{ ...S.btn(false), height: 34, fontSize: 12 }}
+            onClick={handleCopy}
+            title="현재 프레임 PNG를 클립보드에 복사 — 다른 앱에 바로 붙여넣기"
+          >
+            <Icon name="copy" size={16} /> 클립보드 복사
+          </button>
+          <div style={{ flex: 1 }} />
+          {frames.length > 1 && (
+            <>
+              <button
+                style={{ ...S.btn(false), height: 34, fontSize: 12 }}
+                onClick={handleExportMeta}
+                title="스프라이트 시트 PNG + 프레임 좌표·FPS가 담긴 JSON 메타를 함께 저장"
+              >
+                <Icon name="download" size={16} /> 시트+메타
+              </button>
+              <button
+                style={{ ...S.btn(false), height: 34, fontSize: 12 }}
+                onClick={handleGif}
+                title={`애니메이션 GIF로 저장 — 현재 재생 속도(${fps}fps)와 배율(${exportScale}×) 사용`}
+              >
+                <Icon name="play" size={16} /> GIF
+              </button>
+            </>
+          )}
+        </div>
+        {frames.length > 1 && (
+          <div style={{ fontSize: 11, color: UI.dim, marginTop: 8, lineHeight: 1.5 }}>
+            GIF·메타는 프레임 패널의 재생 속도({fps}fps)와 위 배율({exportScale}×)을 그대로 씁니다.
+          </div>
+        )}
       </div>
 
       {/* project save/load */}
