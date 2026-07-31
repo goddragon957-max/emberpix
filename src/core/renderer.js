@@ -26,15 +26,16 @@ function drawBead(ctx, ox, oy, s, hex) {
   ctx.beginPath(); ctx.arc(cx - R * 0.32, cy - R * 0.32, R * 0.15, 0, PI2); ctx.fillStyle = "rgba(255,255,255,0.9)"; ctx.fill();
 }
 
-// opts: { showGrid, onion, reference, refAlpha, selection, gem, pattern, preview }
+// opts: { showGrid, onion, reference, refAlpha, selection, gem, pattern, patternFilter, preview }
 //  - onion: 이전 프레임 픽셀(30%)  - reference: 색칠공부 흑백 밝기 배열 + refAlpha
 //  - selection: { x,y,w,h,float } 점선 오버레이
 //  - gem: true면 픽셀을 보석알로 렌더  - pattern: 보석십자수 목표색 배열(가이드 점)
+//  - patternFilter: hex. 그 색 칸만 또렷하게, 나머지 목표 칸은 잠금(아주 흐리게)
 //  - preview: { points:[[x,y]...], color } 도형 확정 전 미리보기(픽셀 데이터 불변)
 export function render(canvas, pixels, size, opts = {}) {
   const {
     showGrid = false, onion = null, reference = null, refAlpha = 1,
-    selection = null, gem = false, pattern = null, preview = null,
+    selection = null, gem = false, pattern = null, patternFilter = null, preview = null,
   } = opts;
   const cell = cellSize(size);
   canvas.width = size * cell;
@@ -65,18 +66,19 @@ export function render(canvas, pixels, size, opts = {}) {
   }
 
   // 보석십자수 도안 가이드: 아직 안 놓은 목표 칸을 흐린 점으로 표시.
+  // 색 필터가 켜져 있으면 그 색만 또렷하고 크게, 나머지는 잠긴 것처럼 아주 흐리게.
   if (gem && pattern) {
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const i = y * size + x;
-        if (pixels[i] === null && pattern[i]) {
-          ctx.globalAlpha = 0.3;
-          ctx.fillStyle = pattern[i];
-          ctx.beginPath();
-          ctx.arc(x * cell + cell / 2, y * cell + cell / 2, cell * 0.16, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.globalAlpha = 1;
-        }
+        if (pixels[i] !== null || !pattern[i]) continue;
+        const on = !patternFilter || pattern[i] === patternFilter;
+        ctx.globalAlpha = patternFilter ? (on ? 0.55 : 0.1) : 0.3;
+        ctx.fillStyle = pattern[i];
+        ctx.beginPath();
+        ctx.arc(x * cell + cell / 2, y * cell + cell / 2, cell * (on && patternFilter ? 0.24 : 0.16), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
       }
     }
   }

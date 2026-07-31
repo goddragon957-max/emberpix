@@ -17,8 +17,9 @@ export function imageFromFile(file) {
   });
 }
 
-// 비율 유지(contain) + 중앙 정렬로 size×size에 다운샘플 후 밝기 추출.
-export function sampleReference(img, size) {
+// 비율 유지(contain) + 중앙 정렬로 size×size 격자에 다운샘플한 RGBA 바이트.
+// 색칠공부(밝기)와 보석십자수 도안(컬러)이 같은 격자 정렬을 쓰도록 공유한다.
+export function sampleGrid(img, size) {
   const off = document.createElement("canvas");
   off.width = size;
   off.height = size;
@@ -29,8 +30,12 @@ export function sampleReference(img, size) {
   const w = img.width * scale;
   const h = img.height * scale;
   ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+  return ctx.getImageData(0, 0, size, size).data;
+}
 
-  const data = ctx.getImageData(0, 0, size, size).data;
+// 다운샘플 격자에서 흑백 밝기 추출.
+export function sampleReference(img, size) {
+  const data = sampleGrid(img, size);
   const out = new Array(size * size).fill(null);
   for (let i = 0; i < size * size; i++) {
     const a = data[i * 4 + 3];

@@ -156,15 +156,22 @@ export function paletteRgb(palette) {
   return out;
 }
 
+// 가중 제곱거리(눈이 민감한 초록에 큰 가중). 값 자체보다 상대 비교용.
+// 대략 채널당 차이 n일 때 거리 ≈ 10·n² — 임계값을 잡을 때의 감각.
+export function colorDistance(a, b) {
+  const dr = a[0] - b[0], dg = a[1] - b[1], db = a[2] - b[2];
+  return 3 * dr * dr + 6 * dg * dg + db * db;
+}
+
 // 가중 유클리드 거리로 가장 가까운 색. 동점이면 앞쪽(팔레트 순서) 우선.
 // palette는 hex 배열 또는 paletteRgb() 결과 둘 다 받는다.
 export function nearestColor(r, g, b, palette) {
   const list = Array.isArray(palette) && Array.isArray(palette[0]) ? palette : paletteRgb(palette);
   let best = null, bestD = Infinity;
-  for (const [pr, pg, pb, hex] of list) {
-    const dr = r - pr, dg = g - pg, db = b - pb;
-    const d = 3 * dr * dr + 6 * dg * dg + db * db; // 눈이 민감한 초록에 더 큰 가중
-    if (d < bestD) { bestD = d; best = hex; }
+  const c = [r, g, b];
+  for (const p of list) {
+    const d = colorDistance(c, p);
+    if (d < bestD) { bestD = d; best = p[3]; }
   }
   return best;
 }

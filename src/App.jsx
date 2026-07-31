@@ -11,6 +11,9 @@ import { imageFromFile, sampleReference } from "./core/reference.js";
 import { TEMPLATES, templateToReference } from "./core/templates.js";
 import { BUILTIN_PATTERNS } from "./core/patterns.js";
 import {
+  PATTERN_COLORS, imageToPattern, patternLegend, patternProgress, nextUnfinishedColor,
+} from "./core/gems.js";
+import {
   MIN_SCALE, MAX_SCALE, FIT_VIEW, clampView, zoomBy, pinchView, pointerSpan, cssTransform,
 } from "./core/view.js";
 import {
@@ -207,6 +210,15 @@ export default function App() {
   const patternRef = useRef(pattern); // 포인터 클로저용 최신 도안
   useEffect(() => { patternRef.current = pattern; }, [pattern]);
 
+  // 색 필터 — 이 색 칸에만 보석을 놓을 수 있다(실제 보석십자수처럼 한 색씩).
+  // 화면 상태일 뿐 저장하지 않는다.
+  const [patternFilter, setPatternFilter] = useState(null);
+  const filterRef = useRef(null);
+  useEffect(() => { filterRef.current = patternFilter; }, [patternFilter]);
+  // 사진 → 도안 생성 옵션.
+  const [patternColors, setPatternColors] = useState(12);
+  const patternInputRef = useRef(null);
+
   // 선택 도구 — 확정된 사각 선택 { x, y, w, h } | null. 픽셀 데이터가 아니므로 undo 대상 아님.
   const [selRect, setSelRect] = useState(null);
   const selRectRef = useRef(null); // 키보드 클로저용 최신값
@@ -270,9 +282,10 @@ export default function App() {
       selection: overlay,
       gem: gemMode,
       pattern: gemMode ? pattern : null,
+      patternFilter: gemMode ? patternFilter : null,
       preview: shapeRef.current ? { points: shapeCells(shapeRef.current), color } : null,
     });
-  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference, refOpacity, selRect, gemMode, pattern]);
+  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference, refOpacity, selRect, gemMode, pattern, patternFilter]);
 
   // ----- tile preview (켜져 있으면 현재 프레임을 3×3 반복 렌더) -----
   useEffect(() => {
@@ -435,9 +448,10 @@ export default function App() {
         continue;
       }
       // 보석십자수: 도안이 있으면 그 칸의 목표색을 놓는다(배경 칸은 통과).
+      // 색 필터가 켜져 있으면 그 색 칸만 놓인다 — 나머지는 잠긴 셈.
       if (gemMode && patternRef.current) {
         const target = patternRef.current[i];
-        if (target) px[i] = target;
+        if (target && (!filterRef.current || target === filterRef.current)) px[i] = target;
         continue;
       }
       px[i] = color;
@@ -692,6 +706,8 @@ export default function App() {
     // 도안은 크기 종속 → 해제.
     setPattern(null);
     patternRef.current = null;
+    setPatternFilter(null);
+    filterRef.current = null;
     setView(FIT_VIEW);
     setSize(s);
     bump();
@@ -745,6 +761,8 @@ export default function App() {
     setShowReference(true);
     setPattern(data.pattern);
     patternRef.current = data.pattern;
+    setPatternFilter(null);
+    filterRef.current = null;
     setGemMode(!!data.pattern);
     setPalettes(data.palettes);
     setPaletteEdit(false);
@@ -862,6 +880,8 @@ export default function App() {
   const setActivePattern = (pat) => {
     setPattern(pat);
     patternRef.current = pat;
+    setPatternFilter(null);
+    filterRef.current = null;
     setGemMode(true);
     setTool("pen");
     clearSelection();
@@ -887,25 +907,51 @@ export default function App() {
   const clearPattern = () => {
     setPattern(null);
     patternRef.current = null;
+    setPatternFilter(null);
+    filterRef.current = null;
   };
-  // 도안 전체를 한 번에 채우기(미리보기/포기용).
+  // 도안 전체를 한 번에 채우기(미리보기/포기용). 필터가 켜져 있으면 그 색만.
   const fillPattern = () => {
     if (!pattern) return;
     pushUndo();
-    activeFrame().pixels = pattern.slice();
+    const px = activeFrame().pixels.slice();
+    for (let i = 0; i < pattern.length; i++) {
+      if (!pattern[i]) continue;
+      if (patternFilter && pattern[i] !== patternFilter) continue;
+      px[i] = pattern[i];
+    }
+    activeFrame().pixels = px;
     bump();
   };
 
-  // 진행률: 목표 칸 중 올바른 색이 놓인 수.
-  const patternProgress = () => {
-    if (!pattern) return null;
-    const px = frames[currentFrame]?.pixels || [];
-    let total = 0, done = 0;
-    for (let i = 0; i < pattern.length; i++) {
-      if (pattern[i]) { total++; if (px[i] === pattern[i]) done++; }
+  // 사진 → 컬러 도안 (M11 quantize.js 재사용). 캔버스는 비우고 도안만 남긴다.
+  const patternFromImage = async (file) => {
+    if (!file) return;
+    try {
+      const img = await imageFromFile(file);
+      const pat = imageToPattern(img, size, patternColors);
+      const beads = pat.filter(Boolean).length;
+      if (!beads) {
+        setNotice({ text: "도안을 만들 수 없어요 — 이미지가 비어 있거나 전부 투명합니다.", error: true });
+        return;
+      }
+      pushUndo();
+      activeFrame().pixels = makeGrid(size);
+      setActivePattern(pat);
+      bump();
+      setNotice({
+        text: `도안 생성 완료 — 색 ${new Set(pat.filter(Boolean)).size}개 · 보석 ${beads}알`,
+        error: false,
+      });
+    } catch {
+      setNotice({ text: "이미지를 읽을 수 없어요.", error: true });
     }
-    return { total, done };
   };
+
+  // 색 범례 — 색별 총/남은 개수. 도안이 있을 때만 계산한다.
+  const legend = gemMode && pattern ? patternLegend(pattern, frames[currentFrame]?.pixels) : [];
+  const toggleFilter = (c) => setPatternFilter((f) => (f === c ? null : c));
+  const filterNext = () => setPatternFilter(nextUnfinishedColor(legend));
 
   // ----- frame ops (전환/구조 변경 시 선택 해제 — 좌표가 다른 프레임에 새면 안 됨) -----
   const switchFrame = (i) => {
@@ -1130,11 +1176,14 @@ export default function App() {
     { id: "select", icon: "select", label: "선택 — 드래그로 영역 지정, 내부 드래그 이동, Alt+드래그 복사" },
   ];
 
-  const prog = patternProgress();
+  const prog = patternProgress(pattern, frames[currentFrame]?.pixels);
   const progDone = prog && prog.done === prog.total && prog.total > 0;
 
   return (
     <div style={S.app}>
+      {/* 인라인 스타일로는 못 쓰는 키프레임만 여기에 (외부 CSS 라이브러리 없음) */}
+      <style>{`@keyframes gemPop { 0%,100% { opacity:.55; transform:translateY(0) } 50% { opacity:1; transform:translateY(-2px) } }`}</style>
+
       {/* header */}
       <div style={S.header}>
         <div style={S.logo}>
@@ -1466,7 +1515,9 @@ export default function App() {
               <span style={{ fontSize: 12, color: progDone ? UI.ember : UI.dim, fontFamily: "monospace" }}>
                 {prog.done} / {prog.total}
               </span>
-              {progDone && <span style={{ fontSize: 12, color: UI.ember }}>완성! ✨</span>}
+              <span style={{ fontSize: 11, color: UI.dim, fontFamily: "monospace" }}>
+                {prog.total ? Math.floor((prog.done / prog.total) * 100) : 0}%
+              </span>
             </div>
             <div style={{ height: 6, background: UI.panelHi, borderRadius: 3, overflow: "hidden" }}>
               <div style={{
@@ -1479,6 +1530,98 @@ export default function App() {
           </div>
         )}
 
+        {/* 완성 축하 */}
+        {gemMode && progDone && (
+          <div style={{
+            marginTop: 10, padding: "10px 12px", borderRadius: 4,
+            border: `1px solid ${UI.emberDeep}`, background: "#2a1d13",
+            display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <div style={{ display: "flex", gap: 2 }}>
+              {[0, 1, 2, 3, 4].map((i) => (
+                <span key={i} style={{ display: "block", animation: `gemPop 1.4s ${i * 0.12}s infinite` }}>
+                  <Icon name="gem" size={15} color={UI.ember} />
+                </span>
+              ))}
+            </div>
+            <div style={{ fontSize: 13, color: UI.text, fontWeight: 600 }}>
+              완성! 보석 {prog.total}알을 모두 놓았어요 ✨
+            </div>
+          </div>
+        )}
+
+        {/* 색 범례 — 색별 총/남은 개수 + 클릭하면 그 색만 놓기 */}
+        {gemMode && !!legend.length && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+              <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>
+                색 범례 · {legend.length}색 {patternFilter ? "(한 색만 놓는 중)" : ""}
+              </div>
+              <button
+                style={{ ...S.btn(false), height: 28, padding: "0 8px", fontSize: 11 }}
+                onClick={filterNext}
+                disabled={!nextUnfinishedColor(legend)}
+                title="아직 남은 색 중 개수가 가장 많은 색으로 필터"
+              >
+                다음 색
+              </button>
+              <button
+                style={{ ...S.btn(!patternFilter), height: 28, padding: "0 8px", fontSize: 11 }}
+                onClick={() => setPatternFilter(null)}
+                title="필터 해제 — 모든 색 놓기"
+              >
+                전체
+              </button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 190, overflowY: "auto" }}>
+              {legend.map((e) => {
+                const done = e.done >= e.total;
+                const on = patternFilter === e.color;
+                return (
+                  <button
+                    key={e.color}
+                    onClick={() => toggleFilter(e.color)}
+                    title={`${e.color} — 남은 ${e.total - e.done}알 / 총 ${e.total}알`}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, width: "100%",
+                      padding: "5px 8px", cursor: "pointer", textAlign: "left",
+                      background: on ? UI.panelHi : "transparent",
+                      border: `1px solid ${on ? UI.ember : "transparent"}`,
+                      borderRadius: 3, color: UI.text,
+                      opacity: done && !on ? 0.5 : 1,
+                    }}
+                  >
+                    <span style={{
+                      width: 16, height: 16, borderRadius: "50%", background: e.color,
+                      border: "1px solid rgba(255,255,255,0.2)", flexShrink: 0,
+                    }} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 11, fontFamily: "monospace", color: UI.dim }}>{e.color}</span>
+                        <span style={{ flex: 1 }} />
+                        <span style={{ fontSize: 11, fontFamily: "monospace", color: done ? UI.ember : UI.text }}>
+                          {done ? "완료" : `남은 ${e.total - e.done}`}
+                        </span>
+                        <span style={{ fontSize: 10, fontFamily: "monospace", color: UI.dim, width: 46, textAlign: "right" }}>
+                          {e.done}/{e.total}
+                        </span>
+                      </span>
+                      <span style={{ display: "block", height: 4, marginTop: 4, background: "#16171c", borderRadius: 2, overflow: "hidden" }}>
+                        <span style={{
+                          display: "block", height: "100%",
+                          width: `${(e.done / e.total) * 100}%`,
+                          background: done ? UI.ember : e.color,
+                          transition: "width 0.15s",
+                        }} />
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div style={{ ...S.toolRow, marginTop: 10 }}>
           <button style={{ ...S.btn(false), height: 34 }} onClick={drawingToPattern} title="지금 그린 그림을 도안으로 바꾸고 캔버스를 비웁니다">
             <Icon name="download" size={16} /> 현재 그림을 도안으로
@@ -1486,8 +1629,8 @@ export default function App() {
           {pattern && (
             <>
               <div style={{ flex: 1 }} />
-              <button style={{ ...S.btn(false), height: 34 }} onClick={fillPattern} title="도안대로 한 번에 채우기">
-                전부 채우기
+              <button style={{ ...S.btn(false), height: 34 }} onClick={fillPattern} title={patternFilter ? "지금 필터된 색만 한 번에 채우기" : "도안대로 한 번에 채우기"}>
+                {patternFilter ? "이 색 채우기" : "전부 채우기"}
               </button>
               <button style={{ ...S.btn(false, true), height: 34 }} onClick={clearPattern} title="도안 지우기">
                 <Icon name="trash" size={16} color="#ff8a7a" />
@@ -1495,6 +1638,38 @@ export default function App() {
             </>
           )}
         </div>
+
+        {/* 사진 → 도안 */}
+        <div style={{ ...S.toolRow, marginTop: 8 }}>
+          <span style={{ fontSize: 11, color: UI.dim, letterSpacing: 1 }}>사진으로 도안</span>
+          <select
+            style={{ ...S.select, height: 34 }}
+            value={patternColors}
+            onChange={(e) => setPatternColors(Number(e.target.value))}
+            title="도안에 쓸 색 개수"
+          >
+            {PATTERN_COLORS.map((n) => (
+              <option key={n} value={n}>{n}색</option>
+            ))}
+          </select>
+          <button
+            style={{ ...S.btn(false), height: 34 }}
+            onClick={() => patternInputRef.current && patternInputRef.current.click()}
+            title="사진에서 컬러 도안을 자동 생성 — 캔버스는 비워지고 도안만 남습니다"
+          >
+            <Icon name="image" size={16} /> 사진 불러오기
+          </button>
+        </div>
+        <input
+          ref={patternInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            patternFromImage(e.target.files && e.target.files[0]);
+            e.target.value = "";
+          }}
+        />
 
         {/* 내장 도안 */}
         <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 10, paddingBottom: 4 }}>
