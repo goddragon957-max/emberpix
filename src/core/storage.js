@@ -1,6 +1,7 @@
 // localStorage 자동 저장/복구.
-// v2 포맷: { version:2, size, frames:[픽셀배열...], currentFrame, color, reference }.
+// v2 포맷: { version:2, size, frames:[픽셀배열...], currentFrame, color, reference, palettes }.
 //   reference는 색칠공부 흑백 밝기 배열(0~255|null) 또는 null — 선택 필드.
+//   palettes는 팔레트 슬롯 상태 — 선택 필드(없으면 내장 팔레트만).
 // v1 포맷({ size, pixels, color })은 프레임 1개로 마이그레이션한다.
 // 손상/형식 불일치는 무시(null) → 앱은 새 캔버스로 시작.
 // 필드 검증은 format.js 공유 로직 사용 (.emberpix 파일과 동일 기준).
@@ -10,7 +11,7 @@ import { VALID_SIZES, FALLBACK_COLOR, isValidFrame, normalizeStateData } from ".
 const KEY_V2 = "emberpix:autosave:v2";
 const KEY_V1 = "emberpix:autosave:v1";
 
-export function saveState({ size, frames, currentFrame, color, reference, refOpacity, pattern }) {
+export function saveState({ size, frames, currentFrame, color, reference, refOpacity, pattern, palettes }) {
   try {
     localStorage.setItem(
       KEY_V2,
@@ -23,6 +24,7 @@ export function saveState({ size, frames, currentFrame, color, reference, refOpa
         reference: reference ?? null,
         refOpacity: typeof refOpacity === "number" ? refOpacity : 1,
         pattern: pattern ?? null,
+        palettes: palettes ?? null,
       })
     );
   } catch {

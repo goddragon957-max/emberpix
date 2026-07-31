@@ -13,18 +13,20 @@ import { BUILTIN_PATTERNS } from "./core/patterns.js";
 import {
   MIN_SCALE, MAX_SCALE, FIT_VIEW, clampView, zoomBy, pinchView, pointerSpan, cssTransform,
 } from "./core/view.js";
+import {
+  SWEETIE16, MAX_PALETTES, MAX_COLORS, normalizePaletteState, allPalettes, activeColors,
+  activePaletteIndex, isEditable, setActivePalette, addPalette, duplicateActivePalette,
+  removePalette, renamePalette, addColorToActive, removeColorFromActive, pushRecentColor,
+} from "./core/palettes.js";
+import { extractPalette } from "./core/quantize.js";
 
 // ---------- constants ----------
-const PALETTE = [
-  "#1a1c2c", "#5d275d", "#b13e53", "#ef7d57",
-  "#ffcd75", "#a7f070", "#38b764", "#257179",
-  "#29366f", "#3b5dc9", "#41a6f6", "#73eff7",
-  "#f4f4f4", "#94b0c2", "#566c86", "#333c57",
-];
 const SIZES = [16, 32, 64];
 const DEFAULT_SIZE = 32;
-const DEFAULT_COLOR = PALETTE[3];
+const DEFAULT_COLOR = SWEETIE16[3];
 const AUTOSAVE_MS = 500;
+// 이미지에서 뽑을 대표색 개수 후보.
+const EXTRACT_COUNTS = [8, 12, 16, 24, 32];
 
 const UI = {
   bg: "#141519",
@@ -172,6 +174,16 @@ export default function App() {
   // { text, error } | null — 불러오기 결과 안내 (4초 후 자동 사라짐).
   const [notice, setNotice] = useState(null);
 
+  // 팔레트 슬롯 상태 { user, active, recent } — 내장 Sweetie 16은 런타임에 0번으로 붙는다.
+  const [palettes, setPalettes] = useState(() => normalizePaletteState(boot?.palettes));
+  // 팔레트 색 삭제 모드(켜면 스와치 클릭이 삭제). 사용자 팔레트에서만 의미 있다.
+  const [paletteEdit, setPaletteEdit] = useState(false);
+  const [extractCount, setExtractCount] = useState(16);
+  const paletteInputRef = useRef(null);
+  // 최근 색 기록은 포인터 클로저에서 호출되므로 최신 색을 ref로 들고 있는다.
+  const colorRef = useRef(color);
+  useEffect(() => { colorRef.current = color; }, [color]);
+
   // 그리기 옵션 — 브러시 크기(정사각 n×n), 도형 채움 여부.
   const [brushSize, setBrushSize] = useState(1);
   const [shapeFilled, setShapeFilled] = useState(false);
@@ -314,10 +326,15 @@ export default function App() {
         reference,
         refOpacity,
         pattern,
+        palettes,
       });
     }, AUTOSAVE_MS);
     return () => clearTimeout(t);
-  }, [version, size, color, currentFrame, reference, refOpacity, pattern]);
+  }, [version, size, color, currentFrame, reference, refOpacity, pattern, palettes]);
+
+  // 실제로 색을 쓴 순간에만 최근 목록에 올린다(스와치를 고른 것만으로는 기록 안 함).
+  // 이미 맨 앞이면 pushRecentColor가 같은 참조를 반환해 리렌더가 일어나지 않는다.
+  const noteColorUsed = () => setPalettes((s) => pushRecentColor(s, colorRef.current));
 
   // ----- history (현재 프레임 대상) -----
   const pushUndo = () => {
@@ -497,16 +514,21 @@ export default function App() {
       if (from === null || from === color) return; // 빈 칸/같은 색은 무시
       pushUndo();
       activeFrame().pixels = replaceColor(activeFrame().pixels, from, color);
+      noteColorUsed();
       bump();
       return;
     }
     if (tool === "picker") {
       const c = activeFrame().pixels[y * size + x];
-      if (c) setColor(c);
+      if (c) {
+        setColor(c);
+        setPalettes((s) => pushRecentColor(s, c));
+      }
       return;
     }
     if (tool === "fill") {
       pushUndo();
+      noteColorUsed();
       // 밑그림이 보이는 동안엔 도안 선(어두운 셀)이 채우기 경계가 된다.
       const barrier = showReference ? reference : null;
       activeFrame().pixels = floodFill(activeFrame().pixels, size, x, y, color, barrier);
@@ -515,6 +537,7 @@ export default function App() {
     }
     // pen / eraser stroke
     pushUndo();
+    if (tool === "pen") noteColorUsed();
     drawingRef.current = true;
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 합성 이벤트 등 */ }
     paintCell(x, y);
@@ -580,6 +603,7 @@ export default function App() {
       shapeRef.current = null;
       pushUndo();
       paintPoints(cells, color);
+      noteColorUsed();
       bump();
       return;
     }
@@ -689,7 +713,8 @@ export default function App() {
       frames: framesRef.current.map((f) => f.pixels),
       currentFrame,
       color,
-      palette: PALETTE,
+      palettes,
+      palette: activeColors(palettes), // 평면 형태도 함께 (v1 호환 · 외부 도구용)
       reference,
       refOpacity,
       pattern,
@@ -721,6 +746,8 @@ export default function App() {
     setPattern(data.pattern);
     patternRef.current = data.pattern;
     setGemMode(!!data.pattern);
+    setPalettes(data.palettes);
+    setPaletteEdit(false);
     setPlaying(false);
     setView(FIT_VIEW);
     bump();
@@ -733,6 +760,7 @@ export default function App() {
       reference: data.reference,
       refOpacity: data.refOpacity,
       pattern: data.pattern,
+      palettes: data.palettes,
     });
     setNotice({ text: `불러오기 완료 — ${data.size}×${data.size}, 프레임 ${data.frames.length}개`, error: false });
   };
@@ -757,6 +785,77 @@ export default function App() {
   const clearReference = () => {
     setRefSource(null);
     setReference(null);
+  };
+
+  // ----- 팔레트 관리 -----
+  const paletteList = allPalettes(palettes);
+  const paletteIndex = activePaletteIndex(palettes);
+  const swatches = activeColors(palettes);
+  const canEditPalette = isEditable(palettes);
+
+  const pickPalette = (i) => {
+    setPalettes((s) => setActivePalette(s, i));
+    setPaletteEdit(false);
+  };
+  const newPaletteFromCurrent = () => {
+    if (palettes.user.length >= MAX_PALETTES) {
+      setNotice({ text: `팔레트는 최대 ${MAX_PALETTES}개까지 만들 수 있어요.`, error: true });
+      return;
+    }
+    // 지금 색 하나로 시작하는 빈 팔레트 — 여기에 색을 계속 추가한다.
+    setPalettes((s) => addPalette(s, `팔레트 ${s.user.length + 1}`, [color]));
+    setPaletteEdit(false);
+  };
+  const copyPalette = () => {
+    if (palettes.user.length >= MAX_PALETTES) {
+      setNotice({ text: `팔레트는 최대 ${MAX_PALETTES}개까지 만들 수 있어요.`, error: true });
+      return;
+    }
+    setPalettes((s) => duplicateActivePalette(s));
+    setPaletteEdit(false);
+  };
+  const deletePalette = () => {
+    setPalettes((s) => removePalette(s, activePaletteIndex(s)));
+    setPaletteEdit(false);
+  };
+  const addCurrentColor = () => {
+    if (swatches.length >= MAX_COLORS) {
+      setNotice({ text: `한 팔레트에는 색 ${MAX_COLORS}개까지 담을 수 있어요.`, error: true });
+      return;
+    }
+    setPalettes((s) => addColorToActive(s, color));
+  };
+  // 스와치 클릭 — 편집 모드면 삭제, 아니면 현재 색으로 선택.
+  const onSwatch = (c) => {
+    if (paletteEdit && canEditPalette) {
+      setPalettes((s) => removeColorFromActive(s, c));
+      return;
+    }
+    setColor(c);
+    if (tool === "eraser") pickTool("pen");
+  };
+
+  // 이미지에서 대표색 추출 → 새 팔레트 슬롯으로 저장 (M12 도안 생성과 같은 quantize.js).
+  const extractPaletteFrom = async (file) => {
+    if (!file) return;
+    if (palettes.user.length >= MAX_PALETTES) {
+      setNotice({ text: `팔레트는 최대 ${MAX_PALETTES}개까지 만들 수 있어요.`, error: true });
+      return;
+    }
+    try {
+      const img = await imageFromFile(file);
+      const colors = extractPalette(img, extractCount);
+      if (!colors.length) {
+        setNotice({ text: "이미지에서 색을 찾지 못했어요 (전부 투명한 이미지?).", error: true });
+        return;
+      }
+      const name = (file.name || "이미지").replace(/\.[^.]+$/, "");
+      setPalettes((s) => addPalette(s, name, colors));
+      setPaletteEdit(false);
+      setNotice({ text: `팔레트 추출 완료 — 대표색 ${colors.length}개`, error: false });
+    } catch {
+      setNotice({ text: "이미지를 읽을 수 없어요.", error: true });
+    }
   };
 
   // ----- 보석십자수 (도안 설정/해제) -----
@@ -1049,6 +1148,19 @@ export default function App() {
           </select>
         </div>
       </div>
+
+      {/* 안내 배너 — 프로젝트 불러오기·팔레트 작업 결과를 한곳에서 알린다 (4초 후 사라짐) */}
+      {notice && (
+        <div style={{
+          width: "100%", maxWidth: 560, marginBottom: 10, padding: "8px 10px",
+          fontSize: 12, borderRadius: 4,
+          color: notice.error ? "#ff8a7a" : UI.text,
+          background: UI.panel,
+          border: `1px solid ${notice.error ? "#5c2f2a" : UI.border}`,
+        }}>
+          {notice.text}
+        </div>
+      )}
 
       {/* tools */}
       <div style={S.panel}>
@@ -1408,12 +1520,124 @@ export default function App() {
 
       {/* palette */}
       <div style={S.panel}>
-        <div style={S.label}>Palette — Sweetie 16</div>
-        <div style={S.paletteGrid}>
-          {PALETTE.map((c) => (
-            <button key={c} style={S.swatch(c, color === c && tool !== "eraser")} onClick={() => { setColor(c); if (tool === "eraser") pickTool("pen"); }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+          <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>팔레트</div>
+          <button
+            style={{ ...S.btn(false), height: 30, minWidth: 30, padding: "0 8px", fontSize: 12 }}
+            onClick={copyPalette}
+            title="현재 팔레트 복제 — 내장 팔레트를 손보고 싶을 때"
+          >
+            <Icon name="copy" size={14} /> 복제
+          </button>
+          <button
+            style={{ ...S.btn(false), height: 30, minWidth: 30, padding: "0 8px", fontSize: 12 }}
+            onClick={newPaletteFromCurrent}
+            title="현재 색으로 새 팔레트 만들기"
+          >
+            <Icon name="plus" size={14} /> 새 팔레트
+          </button>
+        </div>
+
+        {/* 팔레트 슬롯 전환 */}
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
+          {paletteList.map((p, i) => (
+            <button
+              key={`${i}-${p.name}`}
+              style={{
+                ...S.btn(i === paletteIndex),
+                height: 30,
+                flexShrink: 0,
+                padding: "0 10px",
+                fontSize: 12,
+                fontWeight: 500,
+              }}
+              onClick={() => pickPalette(i)}
+              title={`${p.name} (${p.colors.length}색)`}
+            >
+              {p.name}
+            </button>
           ))}
         </div>
+
+        {/* 이름 변경 · 삭제 (사용자 팔레트만) */}
+        {canEditPalette && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
+            <input
+              type="text"
+              value={paletteList[paletteIndex].name}
+              onChange={(e) => setPalettes((s) => renamePalette(s, paletteIndex, e.target.value))}
+              style={{ ...S.select, height: 30, flex: 1, minWidth: 0, fontSize: 12 }}
+              title="팔레트 이름"
+            />
+            <button
+              style={{ ...S.btn(paletteEdit), height: 30, padding: "0 8px", fontSize: 12 }}
+              onClick={() => setPaletteEdit((v) => !v)}
+              title="색 삭제 모드 — 켜고 스와치를 누르면 그 색이 빠집니다"
+            >
+              {paletteEdit ? "삭제 중" : "색 삭제"}
+            </button>
+            <button
+              style={{ ...S.btn(false, true), height: 30, minWidth: 30, padding: "0 8px" }}
+              onClick={deletePalette}
+              title="이 팔레트 삭제"
+            >
+              <Icon name="trash" size={14} color="#ff8a7a" />
+            </button>
+          </div>
+        )}
+
+        {/* 스와치 */}
+        <div style={{ ...S.paletteGrid, marginTop: 8 }}>
+          {swatches.map((c) => (
+            <button
+              key={c}
+              style={{
+                ...S.swatch(c, color === c && tool !== "eraser"),
+                position: "relative",
+                cursor: paletteEdit && canEditPalette ? "not-allowed" : "pointer",
+              }}
+              onClick={() => onSwatch(c)}
+              title={paletteEdit && canEditPalette ? `${c} 삭제` : c}
+            >
+              {paletteEdit && canEditPalette && (
+                <span style={{
+                  position: "absolute", inset: 0, display: "flex",
+                  alignItems: "center", justifyContent: "center",
+                  fontSize: 14, fontWeight: 800, color: "#16130f",
+                  textShadow: "0 0 3px rgba(255,255,255,0.9)",
+                }}>×</span>
+              )}
+            </button>
+          ))}
+          {!swatches.length && (
+            <span style={{ fontSize: 11, color: UI.dim, gridColumn: "1 / -1" }}>
+              색이 없습니다 — 아래 “현재 색 추가”로 채워보세요.
+            </span>
+          )}
+        </div>
+
+        {/* 최근 사용 색 */}
+        {!!palettes.recent.length && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ ...S.label, marginBottom: 6 }}>최근 사용</div>
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {palettes.recent.map((c) => (
+                <button
+                  key={c}
+                  style={{
+                    width: 24, height: 24, background: c, borderRadius: 3, padding: 0,
+                    border: color === c ? `2px solid ${UI.ember}` : `1px solid rgba(255,255,255,0.12)`,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => { setColor(c); if (tool === "eraser") pickTool("pen"); }}
+                  title={c}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 현재 색 + 팔레트에 추가 */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
           <div style={{
             width: 36, height: 36, borderRadius: 3, background: color,
@@ -1426,8 +1650,49 @@ export default function App() {
             style={{ width: 44, height: 36, border: "none", background: "transparent", cursor: "pointer", padding: 0 }}
             title="커스텀 색"
           />
-          <span style={{ fontSize: 12, color: UI.dim, fontFamily: "monospace" }}>{color}</span>
+          <span style={{ fontSize: 12, color: UI.dim, fontFamily: "monospace", flex: 1 }}>{color}</span>
+          <button
+            style={{ ...S.btn(false), height: 34, fontSize: 12 }}
+            onClick={addCurrentColor}
+            disabled={!canEditPalette || swatches.includes(color)}
+            title={canEditPalette ? "현재 색을 이 팔레트에 추가" : "내장 팔레트는 수정할 수 없어요 — 복제해서 쓰세요"}
+          >
+            <Icon name="plus" size={14} color={!canEditPalette || swatches.includes(color) ? "#4a4d58" : UI.text} />
+            현재 색 추가
+          </button>
         </div>
+
+        {/* 이미지에서 팔레트 추출 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12 }}>
+          <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>이미지에서 추출</div>
+          <select
+            style={{ ...S.select, height: 34 }}
+            value={extractCount}
+            onChange={(e) => setExtractCount(Number(e.target.value))}
+            title="뽑을 대표색 개수"
+          >
+            {EXTRACT_COUNTS.map((n) => (
+              <option key={n} value={n}>{n}색</option>
+            ))}
+          </select>
+          <button
+            style={{ ...S.btn(false), height: 34, fontSize: 12 }}
+            onClick={() => paletteInputRef.current && paletteInputRef.current.click()}
+            title="이미지에서 대표색을 뽑아 새 팔레트로 저장"
+          >
+            <Icon name="image" size={16} /> 추출
+          </button>
+        </div>
+        <input
+          ref={paletteInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            extractPaletteFrom(e.target.files && e.target.files[0]);
+            e.target.value = "";
+          }}
+        />
       </div>
 
       {/* export */}
@@ -1467,11 +1732,6 @@ export default function App() {
             <Icon name="upload" size={16} /> 불러오기
           </button>
         </div>
-        {notice && (
-          <div style={{ marginTop: 8, fontSize: 12, color: notice.error ? "#ff8a7a" : UI.dim }}>
-            {notice.text}
-          </div>
-        )}
         <input
           ref={projectInputRef}
           type="file"
