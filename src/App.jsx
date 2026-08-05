@@ -15,6 +15,7 @@ import { BUILTIN_PATTERNS } from "./core/patterns.js";
 import {
   PATTERN_COLORS, imageToPattern, patternLegend, patternProgress, nextUnfinishedColor,
 } from "./core/gems.js";
+import { MODES, MODE_LIST, MODE_DRAW, MODE_GEM, modeFromSaved, allowsTool } from "./core/modes.js";
 import {
   MIN_SCALE, MAX_SCALE, FIT_VIEW, clampView, zoomBy, pinchView, pointerSpan, cssTransform,
 } from "./core/view.js";
@@ -70,6 +71,8 @@ function Icon({ name, size = 18, color = "currentColor" }) {
     rect: "M3 5h18v14H3V5zm2 2v10h14V7H5z",
     circle: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm0 2a7 7 0 1 1 0 14 7 7 0 0 1 0-14z",
     swap: "M7 7h8V4l5 4-5 4V9H7v4H5V7h2zm10 10H9v3l-5-4 5-4v3h8v-4h2v6h-2z",
+    back: "M15.4 4.6L14 3.2 5.2 12l8.8 8.8 1.4-1.4L8 12l7.4-7.4z",
+    more: "M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h16v2H4v-2z",
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill={color} style={{ display: "block" }}>
@@ -205,6 +208,19 @@ export default function App() {
   const blockDrawRef = useRef(false);
   const wrapWidth = () => (wrapRef.current ? wrapRef.current.getBoundingClientRect().width : 0);
 
+  // 화면 모드 — null이면 시작 화면(모드 고르기). 고른 뒤에야 편집 화면이 뜬다.
+  // 저장본의 모드는 시작 화면에서 "이어서 하기" 표시에만 쓰고, 자동 진입은 하지 않는다.
+  const [mode, setMode] = useState(null);
+  const modeRef = useRef(null); // 키보드/포인터 클로저용 최신 모드
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+  // 시작 화면의 "이어서 하기" 표시용 — 마지막으로 쓰던 모드.
+  // 세션 중 모드를 나갔다 오면 그때 쓰던 모드가 우선한다.
+  const lastModeRef = useRef(modeFromSaved(boot?.mode, !!boot?.pattern));
+  // 고급 기능은 전부 이 서랍에 모은다 — 평소 화면엔 지금 쓸 것만 남긴다.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // 그림 모드에서 도형/선택 같은 확장 도구를 펼칠지.
+  const [moreTools, setMoreTools] = useState(false);
+
   // 보석십자수 — gemMode: 픽셀을 보석알로 렌더 + 도안 보고 톡톡 채우기.
   // pattern: 셀별 목표색(hex|null) 배열 또는 null. 도안이 있으면 페인트-바이-넘버.
   const [gemMode, setGemMode] = useState(() => !!boot?.pattern);
@@ -287,7 +303,8 @@ export default function App() {
       patternFilter: gemMode ? patternFilter : null,
       preview: shapeRef.current ? { points: shapeCells(shapeRef.current), color } : null,
     });
-  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference, refOpacity, selRect, gemMode, pattern, patternFilter]);
+    // mode: 시작 화면에서 돌아오면 캔버스가 새로 붙으므로 반드시 다시 그린다.
+  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference, refOpacity, selRect, gemMode, pattern, patternFilter, mode]);
 
   // ----- tile preview (켜져 있으면 현재 프레임을 3×3 반복 렌더) -----
   useEffect(() => {
@@ -309,7 +326,8 @@ export default function App() {
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, []);
+    // 시작 화면에는 캔버스가 없다 — 모드로 들어와 래퍼가 붙은 뒤 다시 등록해야 한다.
+  }, [mode]);
 
   // 창 크기가 바뀌면 이동량(px 기준)을 다시 제한한다.
   useEffect(() => {
@@ -342,10 +360,11 @@ export default function App() {
         refOpacity,
         pattern,
         palettes,
+        mode: mode ?? lastModeRef.current, // 시작 화면에선 마지막 모드를 유지한다
       });
     }, AUTOSAVE_MS);
     return () => clearTimeout(t);
-  }, [version, size, color, currentFrame, reference, refOpacity, pattern, palettes]);
+  }, [version, size, color, currentFrame, reference, refOpacity, pattern, palettes, mode]);
 
   // 실제로 색을 쓴 순간에만 최근 목록에 올린다(스와치를 고른 것만으로는 기록 안 함).
   // 이미 맨 앞이면 pushRecentColor가 같은 참조를 반환해 리렌더가 일어나지 않는다.
@@ -647,10 +666,35 @@ export default function App() {
     dragRef.current = null;
   };
   // 도구 전환 헬퍼 — 선택 도구를 떠나면 선택 해제.
+  // 모드가 허용하지 않는 도구는 무시한다(보석 모드에서 단축키로 지우개가 켜지는 사고 방지).
   const pickTool = (t) => {
+    if (!allowsTool(modeRef.current, t)) return;
     setTool(t);
     shapeRef.current = null; // 진행 중 도형 미리보기 폐기
     if (t !== "select") clearSelection();
+  };
+
+  // ----- 모드 진입/전환 -----
+  // 그림 데이터(프레임·도안·팔레트)는 그대로 두고 화면 구성만 바꾼다 → 오가도 작업이 안 날아간다.
+  const enterMode = (id) => {
+    setMode(id);
+    modeRef.current = id;
+    lastModeRef.current = id;
+    setDrawerOpen(false);
+    setMoreTools(false);
+    setTool("pen");
+    shapeRef.current = null;
+    clearSelection();
+    setGemMode(MODES[id].gem);
+    if (!MODES[id].gem) setPatternFilter(null);
+    setPlaying(false);
+    setView(FIT_VIEW);
+    bump();
+  };
+  const leaveMode = () => {
+    setDrawerOpen(false);
+    setPlaying(false);
+    setMode(null);
   };
   const flipSelection = () => {
     const sel = selRectRef.current;
@@ -768,6 +812,7 @@ export default function App() {
       reference,
       refOpacity,
       pattern,
+      mode: mode ?? lastModeRef.current,
     });
 
   const handleProjectLoad = async (file) => {
@@ -797,11 +842,16 @@ export default function App() {
     patternRef.current = data.pattern;
     setPatternFilter(null);
     filterRef.current = null;
-    setGemMode(!!data.pattern);
     setPalettes(data.palettes);
     setPaletteEdit(false);
     setPlaying(false);
     setView(FIT_VIEW);
+    // 파일에 담긴 모드로 화면을 맞춘다 (보석 도안이 있으면 보석 모드).
+    setMode(data.mode);
+    modeRef.current = data.mode;
+    setGemMode(MODES[data.mode].gem);
+    setTool("pen");
+    setDrawerOpen(false);
     bump();
     // 디바운스를 기다리지 않고 autosave 즉시 반영.
     saveState({
@@ -813,6 +863,7 @@ export default function App() {
       refOpacity: data.refOpacity,
       pattern: data.pattern,
       palettes: data.palettes,
+      mode: data.mode,
     });
     setNotice({ text: `불러오기 완료 — ${data.size}×${data.size}, 프레임 ${data.frames.length}개`, error: false });
   };
@@ -1069,18 +1120,137 @@ export default function App() {
   }, [size]);
 
   // ----- styles -----
+  const FONT = "'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif";
   const S = {
-    app: {
-      minHeight: "100vh",
+    // 화면 전체를 덮는 고정 셸 — 페이지 스크롤이 없으므로 캔버스가 밀리지 않는다.
+    shell: {
+      position: "absolute",
+      inset: 0,
       background: UI.bg,
       color: UI.text,
-      fontFamily: "'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif",
+      fontFamily: FONT,
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",
+      userSelect: "none",
+      WebkitUserSelect: "none",
+      paddingTop: "env(safe-area-inset-top)",
+      paddingBottom: "env(safe-area-inset-bottom)",
+    },
+    topBar: {
+      flexShrink: 0,
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      padding: "8px 10px",
+      borderBottom: `1px solid ${UI.border}`,
+      background: UI.panel,
+    },
+    // 캔버스 영역 — 남는 높이를 전부 먹고 가운데 정렬. minHeight 0이 있어야 flex가 줄어든다.
+    stage: {
+      flex: 1,
+      minHeight: 0,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 10,
+    },
+    // 하단 조작부 — 모드별 내용. 아이 손가락 기준 큰 버튼.
+    bottom: {
+      flexShrink: 0,
+      borderTop: `1px solid ${UI.border}`,
+      background: UI.panel,
+      padding: "8px 10px 10px",
+    },
+    // 아이용 큰 버튼(56px) — 자주 쓰는 도구/되돌리기에만 쓴다.
+    bigBtn: (active, disabled) => ({
       display: "flex",
       flexDirection: "column",
       alignItems: "center",
-      padding: "0 12px 32px",
+      justifyContent: "center",
+      gap: 2,
+      flex: 1,
+      minWidth: 56,
+      height: 56,
+      padding: 0,
+      background: active ? UI.ember : UI.panelHi,
+      color: active ? "#16130f" : disabled ? "#4a4d58" : UI.text,
+      border: `1px solid ${active ? UI.emberDeep : UI.border}`,
+      borderRadius: 8,
+      cursor: disabled ? "default" : "pointer",
+      fontSize: 11,
+      fontWeight: 700,
+      touchAction: "manipulation",
+    }),
+    // 서랍(고급 기능) — 화면 아래에서 올라오는 오버레이. 내부에서만 스크롤한다.
+    scrim: {
+      position: "absolute",
+      inset: 0,
+      background: "rgba(0,0,0,0.55)",
+      zIndex: 20,
+    },
+    drawer: {
+      position: "absolute",
+      left: 0,
+      right: 0,
+      bottom: 0,
+      maxHeight: "82%",
+      display: "flex",
+      flexDirection: "column",
+      background: UI.bg,
+      borderTop: `1px solid ${UI.border}`,
+      borderRadius: "12px 12px 0 0",
+      zIndex: 21,
+      paddingBottom: "env(safe-area-inset-bottom)",
+    },
+    drawerHead: {
+      flexShrink: 0,
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "10px 12px",
+      borderBottom: `1px solid ${UI.border}`,
+    },
+    drawerBody: {
+      overflowY: "auto",
+      overscrollBehavior: "contain", // 서랍 끝에서 뒤 화면이 안 밀리게
+      WebkitOverflowScrolling: "touch",
+      padding: "10px 10px 4px",
+    },
+    // 시작 화면
+    start: {
+      position: "absolute",
+      inset: 0,
+      background: UI.bg,
+      color: UI.text,
+      fontFamily: FONT,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 18,
+      padding: 20,
       userSelect: "none",
       WebkitUserSelect: "none",
+    },
+    modeCard: {
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      width: "100%",
+      maxWidth: 320,
+      minHeight: 128,
+      padding: 16,
+      background: UI.panel,
+      color: UI.text,
+      border: `2px solid ${UI.border}`,
+      borderRadius: 14,
+      boxShadow: "4px 4px 0 rgba(0,0,0,0.35)",
+      cursor: "pointer",
+      fontFamily: FONT,
+      touchAction: "manipulation",
     },
     header: {
       width: "100%",
@@ -1131,10 +1301,12 @@ export default function App() {
       touchAction: "manipulation",
     }),
     canvasWrap: {
+      // 남는 공간에 꽉 차되 정사각을 유지 — 가로/세로 중 좁은 쪽에 맞춘다.
+      // height를 100%로 두면 aspectRatio보다 우선해 직사각이 되므로 width 기준으로 잡고
+      // maxHeight로 세로를 제한한다(가로가 긴 화면에선 maxHeight가 폭을 줄인다).
       width: "100%",
-      maxWidth: 560,
-      marginBottom: 12,
-      // 확대 시 캔버스가 레이아웃을 밀지 않도록 정사각 뷰포트로 가둔다.
+      maxWidth: "100%",
+      maxHeight: "100%",
       aspectRatio: "1",
       position: "relative",
       overflow: "hidden",
@@ -1198,11 +1370,12 @@ export default function App() {
     },
   };
 
+  // short = 하단 큰 버튼에 붙는 한글 라벨 (아이콘만으로는 아이가 못 알아본다)
   const toolDefs = [
-    { id: "pen", icon: "pen", label: "펜" },
-    { id: "eraser", icon: "eraser", label: "지우개" },
-    { id: "fill", icon: "fill", label: "채우기" },
-    { id: "picker", icon: "picker", label: "스포이드" },
+    { id: "pen", icon: "pen", label: "펜 (B)", short: "펜" },
+    { id: "eraser", icon: "eraser", label: "지우개 (E)", short: "지우개" },
+    { id: "fill", icon: "fill", label: "채우기 (G)", short: "채우기" },
+    { id: "picker", icon: "picker", label: "스포이드 (I)", short: "색 집기" },
     { id: "line", icon: "line", label: "직선 (L)" },
     { id: "rect", icon: "rect", label: "사각형 (R)" },
     { id: "ellipse", icon: "circle", label: "원/타원 (O)" },
@@ -1213,128 +1386,300 @@ export default function App() {
   const prog = patternProgress(pattern, frames[currentFrame]?.pixels);
   const progDone = prog && prog.done === prog.total && prog.total > 0;
 
+  // ----- 시작 화면 (모드 고르기) -----
+  if (!mode) {
+    // 지금 메모리에 있는 그림 기준 — 세션 중 나갔다 와도 정확히 표시된다.
+    const hasSavedWork = framesRef.current.some((f) => f.pixels.some((c) => c));
+    const savedMode = lastModeRef.current;
+    return (
+      <div style={S.start}>
+        <div style={{ ...S.logo, fontSize: 30 }}>
+          EMBER<span style={{ color: UI.ember }}>PIX</span>
+        </div>
+        <div style={{ fontSize: 14, color: UI.dim, marginTop: -10 }}>무엇을 하고 놀까요?</div>
+        {MODE_LIST.map((m) => {
+          const resume = hasSavedWork && savedMode === m.id;
+          return (
+            <button
+              key={m.id}
+              style={{ ...S.modeCard, borderColor: resume ? UI.ember : UI.border }}
+              onClick={() => enterMode(m.id)}
+            >
+              <Icon name={m.icon} size={40} color={UI.ember} />
+              <div style={{ fontSize: 20, fontWeight: 800 }}>{m.name}</div>
+              <div style={{ fontSize: 12, color: UI.dim }}>{m.desc}</div>
+              {resume && (
+                <div style={{ fontSize: 11, color: UI.ember, fontWeight: 700 }}>
+                  이어서 하기 · {size}×{size}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const modeDef = MODES[mode];
+  const quickTools = toolDefs.filter((t) => modeDef.quickTools.includes(t.id));
+  const extraTools = toolDefs.filter(
+    (t) => modeDef.tools.includes(t.id) && !modeDef.quickTools.includes(t.id)
+  );
+
   return (
-    <div style={S.app}>
+    <div style={S.shell}>
       {/* 인라인 스타일로는 못 쓰는 키프레임만 여기에 (외부 CSS 라이브러리 없음) */}
       <style>{`@keyframes gemPop { 0%,100% { opacity:.55; transform:translateY(0) } 50% { opacity:1; transform:translateY(-2px) } }`}</style>
 
-      {/* header */}
-      <div style={S.header}>
-        <div style={S.logo}>
-          EMBER<span style={{ color: UI.ember }}>PIX</span>
+      {/* 상단 바 — 모드 나가기 / 제목 / 다시 실행 / 더보기 */}
+      <div style={S.topBar}>
+        <button style={{ ...S.btn(false), minWidth: 44 }} onClick={leaveMode} title="모드 바꾸기">
+          <Icon name="back" size={18} />
+        </button>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6 }}>
+          <Icon name={modeDef.icon} size={16} color={UI.ember} />
+          <span style={{ fontSize: 14, fontWeight: 700, whiteSpace: "nowrap" }}>{modeDef.name}</span>
+          <span style={{ fontSize: 11, color: UI.dim, fontFamily: "monospace" }}>{size}×{size}</span>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <select style={S.select} value={size} onChange={(e) => changeSize(Number(e.target.value))}>
-            {SIZES.map((s) => (
-              <option key={s} value={s}>{s}×{s}</option>
-            ))}
-          </select>
-        </div>
+        <button style={{ ...S.btn(false), minWidth: 44 }} onClick={redo} disabled={!redoLen} title="다시 실행 (Ctrl+Shift+Z)">
+          <Icon name="redo" size={18} color={redoLen ? UI.text : "#4a4d58"} />
+        </button>
+        <button style={{ ...S.btn(drawerOpen), minWidth: 52 }} onClick={() => setDrawerOpen((v) => !v)} title="더보기 — 크기·프레임·내보내기 등">
+          <Icon name="more" size={18} color={drawerOpen ? "#16130f" : UI.text} />
+        </button>
       </div>
 
-      {/* 안내 배너 — 프로젝트 불러오기·팔레트 작업 결과를 한곳에서 알린다 (4초 후 사라짐) */}
+      {/* 안내 배너 — 프로젝트/팔레트/내보내기 결과를 한곳에서 알린다 (4초 후 사라짐) */}
       {notice && (
         <div style={{
-          width: "100%", maxWidth: 560, marginBottom: 10, padding: "8px 10px",
-          fontSize: 12, borderRadius: 4,
+          flexShrink: 0, padding: "7px 12px", fontSize: 12,
           color: notice.error ? "#ff8a7a" : UI.text,
-          background: UI.panel,
-          border: `1px solid ${notice.error ? "#5c2f2a" : UI.border}`,
+          background: notice.error ? "#2a1614" : UI.panelHi,
+          borderBottom: `1px solid ${UI.border}`,
         }}>
           {notice.text}
         </div>
       )}
 
-      {/* tools */}
-      <div style={S.panel}>
-        <div style={S.toolRow}>
-          {toolDefs.map((t) => (
-            <button key={t.id} style={S.btn(tool === t.id)} onClick={() => pickTool(t.id)} title={t.label}>
-              <Icon name={t.icon} />
-            </button>
-          ))}
-          <div style={{ width: 1, height: 28, background: UI.border, margin: "0 4px" }} />
-          <button style={S.btn(false)} onClick={undo} disabled={!undoLen} title="실행 취소 (Ctrl+Z)">
-            <Icon name="undo" color={undoLen ? UI.text : "#4a4d58"} />
-          </button>
-          <button style={S.btn(false)} onClick={redo} disabled={!redoLen} title="다시 실행 (Ctrl+Shift+Z)">
-            <Icon name="redo" color={redoLen ? UI.text : "#4a4d58"} />
-          </button>
-          <div style={{ width: 1, height: 28, background: UI.border, margin: "0 4px" }} />
-          <button style={S.btn(showGrid)} onClick={() => setShowGrid(!showGrid)} title="그리드">
-            <Icon name="grid" />
-          </button>
-          <button style={S.btn(mirrorX)} onClick={() => setMirrorX(!mirrorX)} title="좌우 대칭 그리기">
-            <Icon name="mirror" />
-          </button>
-          <div style={{ flex: 1 }} />
-          <button style={S.btn(false, true)} onClick={clearCanvas} title="전체 지우기">
-            <Icon name="trash" color="#ff8a7a" />
-          </button>
+      {/* canvas — 남는 높이를 전부 차지한다 */}
+      <div style={S.stage}>
+        <div ref={wrapRef} style={S.canvasWrap}>
+          <canvas
+            ref={canvasRef}
+            style={{ ...S.canvas, transform: cssTransform(view) }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onContextMenu={(e) => e.preventDefault()}
+          />
         </div>
+      </div>
 
-        {/* 브러시 크기 · 도형 채움 */}
-        <div style={{ ...S.toolRow, marginTop: 8 }}>
-          <span style={{ fontSize: 11, color: UI.dim, letterSpacing: 1 }}>브러시</span>
-          {[1, 2, 3, 4].map((n) => (
-            <button
-              key={n}
-              style={{ ...S.btn(brushSize === n), height: 30, minWidth: 30, padding: 0 }}
-              onClick={() => setBrushSize(n)}
-              title={`${n}×${n} 브러시`}
-            >
-              {n}
-            </button>
-          ))}
-          {(tool === "rect" || tool === "ellipse") && (
-            <>
-              <div style={{ width: 1, height: 22, background: UI.border, margin: "0 4px" }} />
-              <button
-                style={{ ...S.btn(shapeFilled), height: 30 }}
-                onClick={() => setShapeFilled((v) => !v)}
-                title="도형 내부 채우기"
-              >
-                {shapeFilled ? "채움" : "테두리"}
+      {/* 하단 조작부 — 모드마다 다르다 */}
+      <div style={S.bottom}>
+        {mode === MODE_DRAW ? (
+          <>
+            <div style={{ display: "flex", gap: 6 }}>
+              {quickTools.map((t) => (
+                <button key={t.id} style={S.bigBtn(tool === t.id)} onClick={() => pickTool(t.id)} title={t.label}>
+                  <Icon name={t.icon} size={22} color={tool === t.id ? "#16130f" : UI.text} />
+                  {t.short}
+                </button>
+              ))}
+              <button style={S.bigBtn(false, !undoLen)} onClick={undo} disabled={!undoLen} title="실행 취소 (Ctrl+Z)">
+                <Icon name="undo" size={22} color={undoLen ? UI.text : "#4a4d58"} />
+                되돌리기
               </button>
-            </>
-          )}
-        </div>
+            </div>
 
-        {/* 선택 조작 (선택이 있을 때만) */}
-        {selRect && (
-          <div style={{ ...S.toolRow, marginTop: 8 }}>
-            <span style={{ fontSize: 11, color: UI.dim, fontFamily: "monospace" }}>
-              선택 {selRect.w}×{selRect.h}
-            </span>
-            <div style={{ flex: 1 }} />
-            <button style={{ ...S.btn(false), height: 34 }} onClick={flipSelection} title="선택 영역 좌우반전">
-              <Icon name="mirror" size={16} /> 좌우반전
-            </button>
-            <button style={{ ...S.btn(false), height: 34 }} onClick={duplicateSelection} title="선택 영역 복제 — 복사본이 선택됨 (Alt+드래그 = 복사 이동)">
-              <Icon name="copy" size={16} /> 복제
-            </button>
-            <button style={{ ...S.btn(false, true), height: 34 }} onClick={deleteSelection} title="선택 영역 지우기 (Delete)">
-              <Icon name="trash" size={16} color="#ff8a7a" />
-            </button>
-            <button style={{ ...S.btn(false), height: 34 }} onClick={clearSelection} title="선택 해제 (Esc)">
-              해제
-            </button>
-          </div>
+            {/* 확장 도구(도형·선택·색교체)는 필요할 때만 펼친다 */}
+            <div style={{ display: "flex", gap: 6, marginTop: 6, alignItems: "center" }}>
+              <button
+                style={{ ...S.btn(moreTools), height: 34, fontSize: 12 }}
+                onClick={() => setMoreTools((v) => !v)}
+                title="도형·선택 같은 확장 도구 보기"
+              >
+                도구 {moreTools ? "접기" : "더"}
+              </button>
+              {moreTools ? extraTools.map((t) => (
+                <button key={t.id} style={{ ...S.btn(tool === t.id), height: 34, minWidth: 38 }} onClick={() => pickTool(t.id)} title={t.label}>
+                  <Icon name={t.icon} size={17} color={tool === t.id ? "#16130f" : UI.text} />
+                </button>
+              )) : (
+                <>
+                  <div style={{ flex: 1 }} />
+                  <span style={{ fontSize: 11, color: UI.dim }}>색을 골라 캔버스를 톡톡</span>
+                </>
+              )}
+            </div>
+
+            {moreTools && (
+              <div style={{ ...S.toolRow, marginTop: 6 }}>
+                <span style={{ fontSize: 11, color: UI.dim, letterSpacing: 1 }}>브러시</span>
+                {[1, 2, 3, 4].map((n) => (
+                  <button
+                    key={n}
+                    style={{ ...S.btn(brushSize === n), height: 30, minWidth: 30, padding: 0 }}
+                    onClick={() => setBrushSize(n)}
+                    title={`${n}×${n} 브러시`}
+                  >
+                    {n}
+                  </button>
+                ))}
+                {(tool === "rect" || tool === "ellipse") && (
+                  <button
+                    style={{ ...S.btn(shapeFilled), height: 30 }}
+                    onClick={() => setShapeFilled((v) => !v)}
+                    title="도형 내부 채우기"
+                  >
+                    {shapeFilled ? "채움" : "테두리"}
+                  </button>
+                )}
+                <button style={{ ...S.btn(showGrid), height: 30, minWidth: 34 }} onClick={() => setShowGrid(!showGrid)} title="그리드">
+                  <Icon name="grid" size={15} color={showGrid ? "#16130f" : UI.text} />
+                </button>
+                <button style={{ ...S.btn(mirrorX), height: 30, minWidth: 34 }} onClick={() => setMirrorX(!mirrorX)} title="좌우 대칭 그리기">
+                  <Icon name="mirror" size={15} color={mirrorX ? "#16130f" : UI.text} />
+                </button>
+              </div>
+            )}
+
+            {/* 선택 조작 (선택이 있을 때만) */}
+            {selRect && (
+              <div style={{ ...S.toolRow, marginTop: 6 }}>
+                <span style={{ fontSize: 11, color: UI.dim, fontFamily: "monospace" }}>
+                  선택 {selRect.w}×{selRect.h}
+                </span>
+                <div style={{ flex: 1 }} />
+                <button style={{ ...S.btn(false), height: 32 }} onClick={flipSelection} title="선택 영역 좌우반전">
+                  <Icon name="mirror" size={15} /> 반전
+                </button>
+                <button style={{ ...S.btn(false), height: 32 }} onClick={duplicateSelection} title="선택 영역 복제 (Alt+드래그 = 복사 이동)">
+                  <Icon name="copy" size={15} /> 복제
+                </button>
+                <button style={{ ...S.btn(false, true), height: 32 }} onClick={deleteSelection} title="선택 영역 지우기 (Delete)">
+                  <Icon name="trash" size={15} color="#ff8a7a" />
+                </button>
+                <button style={{ ...S.btn(false), height: 32 }} onClick={clearSelection} title="선택 해제 (Esc)">
+                  해제
+                </button>
+              </div>
+            )}
+
+            {/* 팔레트 — 아이는 여기서 색만 고르면 된다 */}
+            <div style={{ ...S.paletteGrid, marginTop: 8 }}>
+              {swatches.map((c) => (
+                <button
+                  key={c}
+                  style={{ ...S.swatch(c, color === c && tool !== "eraser"), minHeight: 34 }}
+                  onClick={() => { setColor(c); if (tool === "eraser") pickTool("pen"); }}
+                  title={c}
+                />
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            {/* 보석 모드 — 펜 고정. 진행률 + 색 고르기 + 되돌리기만 남긴다 */}
+            {prog ? (
+              <>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <Icon name="gem" size={14} color={progDone ? UI.ember : UI.dim} />
+                  <span style={{ fontSize: 12, fontFamily: "monospace", color: progDone ? UI.ember : UI.dim }}>
+                    {prog.done} / {prog.total}
+                  </span>
+                  {progDone && <span style={{ fontSize: 12, color: UI.ember, fontWeight: 700 }}>완성! ✨</span>}
+                  <div style={{ flex: 1 }} />
+                  <button
+                    style={{ ...S.btn(false), height: 32, fontSize: 11 }}
+                    onClick={filterNext}
+                    disabled={!nextUnfinishedColor(legend)}
+                    title="아직 남은 색 중 개수가 가장 많은 색으로"
+                  >
+                    다음 색
+                  </button>
+                  <button
+                    style={{ ...S.btn(!patternFilter), height: 32, fontSize: 11 }}
+                    onClick={() => setPatternFilter(null)}
+                    title="모든 색 놓기"
+                  >
+                    전체
+                  </button>
+                  <button style={{ ...S.btn(false), height: 32, minWidth: 38 }} onClick={undo} disabled={!undoLen} title="되돌리기 (Ctrl+Z)">
+                    <Icon name="undo" size={16} color={undoLen ? UI.text : "#4a4d58"} />
+                  </button>
+                </div>
+                <div style={{ height: 6, background: UI.panelHi, borderRadius: 3, overflow: "hidden", marginBottom: 8 }}>
+                  <div style={{
+                    height: "100%",
+                    width: `${prog.total ? (prog.done / prog.total) * 100 : 0}%`,
+                    background: UI.ember, transition: "width 0.15s",
+                  }} />
+                </div>
+                {/* 색 고르기 — 큰 동그라미, 가로 스크롤 */}
+                <div style={{ display: "flex", gap: 8, overflowX: "auto", overscrollBehavior: "contain", paddingBottom: 4 }}>
+                  {legend.map((e) => {
+                    const done = e.done >= e.total;
+                    const on = patternFilter === e.color;
+                    return (
+                      <button
+                        key={e.color}
+                        onClick={() => toggleFilter(e.color)}
+                        title={`${e.color} — 남은 ${e.total - e.done}알 / 총 ${e.total}알`}
+                        style={{
+                          flexShrink: 0, width: 58, padding: "6px 0",
+                          display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                          background: on ? UI.panelHi : "transparent",
+                          border: `2px solid ${on ? UI.ember : "transparent"}`,
+                          borderRadius: 10, cursor: "pointer",
+                          opacity: done && !on ? 0.45 : 1,
+                        }}
+                      >
+                        <span style={{
+                          width: 32, height: 32, borderRadius: "50%", background: e.color,
+                          border: "2px solid rgba(255,255,255,0.25)",
+                        }} />
+                        <span style={{ fontSize: 11, fontFamily: "monospace", color: done ? UI.ember : UI.text }}>
+                          {done ? "완료" : e.total - e.done}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ flex: 1, fontSize: 12, color: UI.dim, lineHeight: 1.5 }}>
+                  도안을 고르면 흐린 점 위를 눌러 보석을 채워요.
+                </div>
+                <button style={{ ...S.btn(true), height: 44, fontSize: 13 }} onClick={() => setDrawerOpen(true)}>
+                  <Icon name="gem" size={18} color="#16130f" /> 도안 고르기
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* canvas */}
-      <div ref={wrapRef} style={S.canvasWrap}>
-        <canvas
-          ref={canvasRef}
-          style={{ ...S.canvas, transform: cssTransform(view) }}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          onContextMenu={(e) => e.preventDefault()}
-        />
-      </div>
+      {/* ----- 더보기 서랍 (고급 기능은 전부 여기에) ----- */}
+      {drawerOpen && (
+        <>
+          <div style={S.scrim} onClick={() => setDrawerOpen(false)} />
+          <div style={S.drawer}>
+            <div style={S.drawerHead}>
+              <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>더보기</div>
+              <select style={S.select} value={size} onChange={(e) => changeSize(Number(e.target.value))} title="캔버스 크기 (바꾸면 새로 시작)">
+                {SIZES.map((s) => (
+                  <option key={s} value={s}>{s}×{s}</option>
+                ))}
+              </select>
+              <button style={{ ...S.btn(false, true), height: 36 }} onClick={clearCanvas} title="전체 지우기">
+                <Icon name="trash" size={16} color="#ff8a7a" />
+              </button>
+              <button style={{ ...S.btn(false), height: 36 }} onClick={() => setDrawerOpen(false)}>닫기</button>
+            </div>
+            <div style={S.drawerBody}>
 
       {/* zoom controls */}
       <div style={{ ...S.panel, display: "flex", alignItems: "center", gap: 6 }}>
@@ -1368,7 +1713,8 @@ export default function App() {
         </button>
       </div>
 
-      {/* frames */}
+      {/* frames — 애니메이션은 그림 모드에서만 (보석십자수는 한 장짜리다) */}
+      {mode === MODE_DRAW && (
       <div style={S.panel}>
         <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
           <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>프레임 · {frames.length}</div>
@@ -1418,8 +1764,10 @@ export default function App() {
           </button>
         </div>
       </div>
+      )}
 
       {/* tile preview */}
+      {mode === MODE_DRAW && (
       <div style={S.panel}>
         <div style={{ display: "flex", alignItems: "center" }}>
           <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>타일 모드</div>
@@ -1446,8 +1794,10 @@ export default function App() {
           />
         )}
       </div>
+      )}
 
       {/* coloring reference */}
+      {mode === MODE_DRAW && (
       <div style={S.panel}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>색칠공부</div>
@@ -1527,42 +1877,19 @@ export default function App() {
           })}
         </div>
       </div>
+      )}
 
-      {/* 보석십자수 */}
+      {/* 보석십자수 — 도안 고르기/만들기. 진행률·색 범례는 하단 바에 있으므로 여기선 뺀다. */}
+      {mode === MODE_GEM && (
       <div style={S.panel}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>보석십자수</div>
-          <button
-            style={{ ...S.btn(gemMode), height: 34 }}
-            onClick={() => setGemMode((v) => !v)}
-            title="보석 모드 — 픽셀을 반짝이는 보석알로 표시"
-          >
-            <Icon name="gem" size={16} color={gemMode ? "#16130f" : UI.text} /> 보석 모드
-          </button>
+          <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>도안</div>
+          {prog && (
+            <span style={{ fontSize: 12, color: UI.dim, fontFamily: "monospace" }}>
+              {prog.done} / {prog.total} · {prog.total ? Math.floor((prog.done / prog.total) * 100) : 0}%
+            </span>
+          )}
         </div>
-
-        {/* 진행률 */}
-        {gemMode && prog && (
-          <div style={{ marginTop: 10 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-              <Icon name="gem" size={13} color={progDone ? UI.ember : UI.dim} />
-              <span style={{ fontSize: 12, color: progDone ? UI.ember : UI.dim, fontFamily: "monospace" }}>
-                {prog.done} / {prog.total}
-              </span>
-              <span style={{ fontSize: 11, color: UI.dim, fontFamily: "monospace" }}>
-                {prog.total ? Math.floor((prog.done / prog.total) * 100) : 0}%
-              </span>
-            </div>
-            <div style={{ height: 6, background: UI.panelHi, borderRadius: 3, overflow: "hidden" }}>
-              <div style={{
-                height: "100%",
-                width: `${prog.total ? (prog.done / prog.total) * 100 : 0}%`,
-                background: UI.ember,
-                transition: "width 0.15s",
-              }} />
-            </div>
-          </div>
-        )}
 
         {/* 완성 축하 */}
         {gemMode && progDone && (
@@ -1580,78 +1907,6 @@ export default function App() {
             </div>
             <div style={{ fontSize: 13, color: UI.text, fontWeight: 600 }}>
               완성! 보석 {prog.total}알을 모두 놓았어요 ✨
-            </div>
-          </div>
-        )}
-
-        {/* 색 범례 — 색별 총/남은 개수 + 클릭하면 그 색만 놓기 */}
-        {gemMode && !!legend.length && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-              <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>
-                색 범례 · {legend.length}색 {patternFilter ? "(한 색만 놓는 중)" : ""}
-              </div>
-              <button
-                style={{ ...S.btn(false), height: 28, padding: "0 8px", fontSize: 11 }}
-                onClick={filterNext}
-                disabled={!nextUnfinishedColor(legend)}
-                title="아직 남은 색 중 개수가 가장 많은 색으로 필터"
-              >
-                다음 색
-              </button>
-              <button
-                style={{ ...S.btn(!patternFilter), height: 28, padding: "0 8px", fontSize: 11 }}
-                onClick={() => setPatternFilter(null)}
-                title="필터 해제 — 모든 색 놓기"
-              >
-                전체
-              </button>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 190, overflowY: "auto" }}>
-              {legend.map((e) => {
-                const done = e.done >= e.total;
-                const on = patternFilter === e.color;
-                return (
-                  <button
-                    key={e.color}
-                    onClick={() => toggleFilter(e.color)}
-                    title={`${e.color} — 남은 ${e.total - e.done}알 / 총 ${e.total}알`}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 8, width: "100%",
-                      padding: "5px 8px", cursor: "pointer", textAlign: "left",
-                      background: on ? UI.panelHi : "transparent",
-                      border: `1px solid ${on ? UI.ember : "transparent"}`,
-                      borderRadius: 3, color: UI.text,
-                      opacity: done && !on ? 0.5 : 1,
-                    }}
-                  >
-                    <span style={{
-                      width: 16, height: 16, borderRadius: "50%", background: e.color,
-                      border: "1px solid rgba(255,255,255,0.2)", flexShrink: 0,
-                    }} />
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 11, fontFamily: "monospace", color: UI.dim }}>{e.color}</span>
-                        <span style={{ flex: 1 }} />
-                        <span style={{ fontSize: 11, fontFamily: "monospace", color: done ? UI.ember : UI.text }}>
-                          {done ? "완료" : `남은 ${e.total - e.done}`}
-                        </span>
-                        <span style={{ fontSize: 10, fontFamily: "monospace", color: UI.dim, width: 46, textAlign: "right" }}>
-                          {e.done}/{e.total}
-                        </span>
-                      </span>
-                      <span style={{ display: "block", height: 4, marginTop: 4, background: "#16171c", borderRadius: 2, overflow: "hidden" }}>
-                        <span style={{
-                          display: "block", height: "100%",
-                          width: `${(e.done / e.total) * 100}%`,
-                          background: done ? UI.ember : e.color,
-                          transition: "width 0.15s",
-                        }} />
-                      </span>
-                    </span>
-                  </button>
-                );
-              })}
             </div>
           </div>
         )}
@@ -1720,14 +1975,16 @@ export default function App() {
           ))}
         </div>
 
-        {gemMode && !pattern && (
+        {!pattern && (
           <div style={{ fontSize: 11, color: UI.dim, marginTop: 8, lineHeight: 1.5 }}>
-            도안을 고르면 흐린 점 위를 펜으로 톡톡 눌러 보석을 채웁니다. 터치도 됩니다.
+            도안을 고르면 흐린 점 위를 톡톡 눌러 보석을 채웁니다. 터치도 됩니다.
           </div>
         )}
       </div>
+      )}
 
-      {/* palette */}
+      {/* palette — 색은 그림 모드에서만 고른다 (보석 모드는 도안 색을 그대로 쓴다) */}
+      {mode === MODE_DRAW && (
       <div style={S.panel}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
           <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>팔레트</div>
@@ -1903,6 +2160,7 @@ export default function App() {
           }}
         />
       </div>
+      )}
 
       {/* export */}
       <div style={S.panel}>
@@ -1987,10 +2245,16 @@ export default function App() {
         />
       </div>
 
-      <div style={{ fontSize: 11, color: UI.dim, maxWidth: 560, width: "100%", textAlign: "center" }}>
-        단축키 · B 펜 / E 지우개 / G 채우기 / I 스포이드 / L 직선 / R 사각 / O 원 / X 색교체 / M 선택
-        <br />+ − 브러시 크기 / Del 선택 지우기 / Esc 해제 / Ctrl+Z 취소
-      </div>
+              {mode === MODE_DRAW && (
+                <div style={{ fontSize: 11, color: UI.dim, textAlign: "center", padding: "4px 0 10px", lineHeight: 1.6 }}>
+                  단축키 · B 펜 / E 지우개 / G 채우기 / I 스포이드 / L 직선 / R 사각 / O 원 / X 색교체 / M 선택
+                  <br />+ − 브러시 크기 / Del 선택 지우기 / Esc 해제 / Ctrl+Z 취소
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

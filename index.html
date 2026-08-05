@@ -2,11 +2,29 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <meta name="theme-color" content="#141519" />
     <title>Emberpix</title>
     <style>
-      html, body { margin: 0; background: #141519; }
+      /* 페이지 자체가 스크롤되지 않게 고정한다 — 아이들이 캔버스 밖을 짚어도
+         화면이 밀리거나 당겨서-새로고침이 걸리지 않아야 한다.
+         스크롤은 앱 안의 지정된 영역(서랍/목록)에서만 일어난다. */
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #141519;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+      body {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        touch-action: manipulation;   /* 더블탭 확대 방지 */
+        -webkit-text-size-adjust: 100%;
+        -webkit-tap-highlight-color: transparent;
+      }
+      #root { height: 100%; }
     </style>
   </head>
   <body>

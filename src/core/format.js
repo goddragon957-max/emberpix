@@ -4,6 +4,7 @@
 //   palettes: 팔레트 슬롯 상태 { user, active, recent } — 선택 필드(없으면 기본값).
 
 import { normalizePaletteState } from "./palettes.js";
+import { modeFromSaved } from "./modes.js";
 
 export const VALID_SIZES = [16, 32, 64];
 export const FALLBACK_COLOR = "#ef7d57";
@@ -50,5 +51,7 @@ export function normalizeStateData(d) {
     pattern: isValidFrame(d.pattern, d.size) ? d.pattern : null,
     // 팔레트는 크기와 무관 — 없거나 손상되면 기본값(내장 팔레트만).
     palettes: normalizePaletteState(d.palettes),
+    // 화면 모드. 구 저장본엔 없으므로 도안 유무로 추측한다.
+    mode: modeFromSaved(d.mode, isValidFrame(d.pattern, d.size)),
   };
 }

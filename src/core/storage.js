@@ -11,7 +11,7 @@ import { VALID_SIZES, FALLBACK_COLOR, isValidFrame, normalizeStateData } from ".
 const KEY_V2 = "emberpix:autosave:v2";
 const KEY_V1 = "emberpix:autosave:v1";
 
-export function saveState({ size, frames, currentFrame, color, reference, refOpacity, pattern, palettes }) {
+export function saveState({ size, frames, currentFrame, color, reference, refOpacity, pattern, palettes, mode }) {
   try {
     localStorage.setItem(
       KEY_V2,
@@ -25,6 +25,7 @@ export function saveState({ size, frames, currentFrame, color, reference, refOpa
         refOpacity: typeof refOpacity === "number" ? refOpacity : 1,
         pattern: pattern ?? null,
         palettes: palettes ?? null,
+        mode: mode ?? null,
       })
     );
   } catch {
