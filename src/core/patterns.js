@@ -15,14 +15,23 @@ function pointInPoly(px, py, verts) {
   return inside;
 }
 
+// 하트 부등식 (x²+y²-1)³ ≤ x²y³ 의 실제 경계 — 수치로 구한 상수.
+// 이 값으로 맞춰야 도안이 캔버스 밖으로 잘리지 않는다(예전엔 위가 잘렸다).
+const HEART_W = 2.278;   // x: -1.139 ~ 1.139
+const HEART_H = 2.236;   // y: -1.000 ~ 1.236
+const HEART_CY = 0.118;  // 세로 중심 (아래로 뾰족해 위쪽이 더 길다)
+
 // 하트 — 하트 부등식. 3색(빨강 몸통 / 주황 하이라이트 / 퍼플 그림자).
 export function heartPattern(n) {
   const out = new Array(n * n).fill(null);
-  const s = n * 0.39;
+  // 긴 축을 (n - 1.5)에 맞춰 사방에 최소 여백을 남긴다.
+  const s = (n - 1.5) / Math.max(HEART_W, HEART_H);
+  // 곡선의 세로 중심이 격자 중심에 오도록 기준점을 옮긴다.
+  const cy = n / 2 + 0.5 + HEART_CY * s;
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
       const nx = (x + 0.5 - n / 2) / s;
-      const ny = -(y + 0.5 - (n / 2 - 1)) / s;
+      const ny = -(y + 0.5 - cy) / s;
       const f = Math.pow(nx * nx + ny * ny - 1, 3) - nx * nx * Math.pow(ny, 3);
       if (f <= 0) {
         let c = "#b13e53";

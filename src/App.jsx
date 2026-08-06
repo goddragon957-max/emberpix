@@ -16,6 +16,7 @@ import {
   PATTERN_COLORS, imageToPattern, patternLegend, patternProgress, nextUnfinishedColor,
 } from "./core/gems.js";
 import { MODES, MODE_LIST, MODE_DRAW, MODE_GEM, modeFromSaved, allowsTool } from "./core/modes.js";
+import { runConfetti } from "./core/confetti.js";
 import {
   MIN_SCALE, MAX_SCALE, FIT_VIEW, clampView, zoomBy, pinchView, pointerSpan, cssTransform,
 } from "./core/view.js";
@@ -201,6 +202,11 @@ export default function App() {
   // 캔버스 뷰(확대/이동). 표시는 CSS transform, 픽셀 데이터는 무관.
   const [view, setView] = useState(FIT_VIEW);
   const wrapRef = useRef(null);
+  // 캔버스가 들어갈 영역과, 거기에 딱 맞는 정사각 한 변(px).
+  // aspect-ratio + max-height 조합은 가로가 긴 화면에서 폭이 안 줄어 직사각이 되므로
+  // (Chrome 확인) 실제 영역을 재서 min(가로, 세로)로 직접 정한다.
+  const stageRef = useRef(null);
+  const [square, setSquare] = useState(0);
   // 활성 포인터 목록(멀티터치 판별용) + 제스처 스냅샷.
   const pointersRef = useRef(new Map());
   const gestureRef = useRef(null);
@@ -216,6 +222,13 @@ export default function App() {
   // 시작 화면의 "이어서 하기" 표시용 — 마지막으로 쓰던 모드.
   // 세션 중 모드를 나갔다 오면 그때 쓰던 모드가 우선한다.
   const lastModeRef = useRef(modeFromSaved(boot?.mode, !!boot?.pattern));
+  // 화면 크기 — 폰(세로 쌓기) / 가로가 넓은 화면(캔버스 옆에 조작부) 분기용.
+  const [vp, setVp] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  // 가로로 눕힌 화면은 세로가 부족해 조작부를 아래에 두면 캔버스가 확 쪼그라든다.
+  // 가로가 세로보다 길고 700px 이상이면 조작부를 옆 기둥으로 옮긴다.
+  const wide = vp.w > vp.h && vp.w >= 700;
+  const sideWidth = vp.w < 900 ? 300 : 340;
+
   // 고급 기능은 전부 이 서랍에 모은다 — 평소 화면엔 지금 쓸 것만 남긴다.
   const [drawerOpen, setDrawerOpen] = useState(false);
   // 그림 모드에서 도형/선택 같은 확장 도구를 펼칠지.
@@ -236,6 +249,10 @@ export default function App() {
   // 사진 → 도안 생성 옵션.
   const [patternColors, setPatternColors] = useState(12);
   const patternInputRef = useRef(null);
+  // 완성 축하 컨페티 — 완성되는 "순간"에 한 번만 터뜨린다.
+  const confettiRef = useRef(null);
+  const [celebrating, setCelebrating] = useState(false);
+  const wasDoneRef = useRef(false);
 
   // 선택 도구 — 확정된 사각 선택 { x, y, w, h } | null. 픽셀 데이터가 아니므로 undo 대상 아님.
   const [selRect, setSelRect] = useState(null);
@@ -314,6 +331,48 @@ export default function App() {
     renderTilePreview(cv, framesRef.current[currentFrame].pixels, size);
   }, [tilePreview, version, currentFrame, size]);
 
+  // 캔버스 영역 크기를 실측해 정사각 한 변을 정한다.
+  // 캔버스 크기는 영역 크기에 영향을 주지 않으므로 관찰 루프가 생기지 않는다.
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => {
+      // clientWidth/Height는 패딩을 포함하므로 빼야 실제로 그릴 수 있는 크기가 나온다.
+      const cs = getComputedStyle(el);
+      const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+      const s = Math.floor(Math.min(el.clientWidth - padX, el.clientHeight - padY));
+      setSquare(s > 0 ? s : 0);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+    // vp: ResizeObserver 콜백이 늦거나 막히는 상황(백그라운드 탭 등)에도
+    //     창 크기 변화만으로 한 번은 반드시 다시 잰다.
+  }, [mode, vp, wide]);
+
+  // ----- 완성 축하 -----
+  // 마지막 한 알을 놓는 "순간"에만 터뜨린다. 이미 완성된 저장본을 열었을 때는
+  // enterMode가 wasDoneRef를 미리 맞춰두므로 조용히 들어간다.
+  useEffect(() => {
+    const p = patternProgress(pattern, framesRef.current[frameIndexRef.current]?.pixels);
+    const done = !!p && p.total > 0 && p.done === p.total;
+    if (done && !wasDoneRef.current && mode === MODE_GEM) setCelebrating(true);
+    wasDoneRef.current = done;
+  }, [version, pattern, mode, currentFrame]);
+
+  // 컨페티 실행 — 방금 완성한 도안의 색을 그대로 뿌린다.
+  useEffect(() => {
+    if (!celebrating) return;
+    const colors = [...new Set((pattern || []).filter(Boolean))].slice(0, 8);
+    return runConfetti(confettiRef.current, {
+      colors,
+      seed: 7,
+      onDone: () => setCelebrating(false),
+    });
+  }, [celebrating]);
+
   // 휠 확대 (커서 기준). React의 onWheel은 passive라 preventDefault가 안 먹어 네이티브로 붙인다.
   useEffect(() => {
     const el = wrapRef.current;
@@ -329,14 +388,19 @@ export default function App() {
     // 시작 화면에는 캔버스가 없다 — 모드로 들어와 래퍼가 붙은 뒤 다시 등록해야 한다.
   }, [mode]);
 
-  // 창 크기가 바뀌면 이동량(px 기준)을 다시 제한한다.
+  // 창 크기가 바뀌면 이동량(px 기준)을 다시 제한하고, 레이아웃 분기도 다시 계산한다.
   useEffect(() => {
     const onResize = () => {
       const w = wrapWidth();
       if (w) setView((v) => clampView(v, w));
+      setVp({ w: window.innerWidth, h: window.innerHeight });
     };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
   }, []);
 
   // ----- playback -----
@@ -687,6 +751,10 @@ export default function App() {
     clearSelection();
     setGemMode(MODES[id].gem);
     if (!MODES[id].gem) setPatternFilter(null);
+    // 이미 완성된 도안을 다시 열 때 컨페티가 터지지 않도록 현재 상태를 기준으로 맞춘다.
+    const p = patternProgress(patternRef.current, framesRef.current[frameIndexRef.current]?.pixels);
+    wasDoneRef.current = !!p && p.total > 0 && p.done === p.total;
+    setCelebrating(false);
     setPlaying(false);
     setView(FIT_VIEW);
     bump();
@@ -1146,22 +1214,42 @@ export default function App() {
       borderBottom: `1px solid ${UI.border}`,
       background: UI.panel,
     },
-    // 캔버스 영역 — 남는 높이를 전부 먹고 가운데 정렬. minHeight 0이 있어야 flex가 줄어든다.
+    // 캔버스 + 조작부를 담는 본문. 좁으면 세로로 쌓고, 넓으면 나란히 놓는다.
+    main: {
+      flex: 1,
+      minHeight: 0,
+      display: "flex",
+      flexDirection: wide ? "row" : "column",
+    },
+    // 캔버스 영역 — 남는 공간을 전부 먹고 가운데 정렬. min* 0이 있어야 flex가 줄어든다.
     stage: {
       flex: 1,
       minHeight: 0,
+      minWidth: 0,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       padding: 10,
     },
-    // 하단 조작부 — 모드별 내용. 아이 손가락 기준 큰 버튼.
-    bottom: {
-      flexShrink: 0,
-      borderTop: `1px solid ${UI.border}`,
-      background: UI.panel,
-      padding: "8px 10px 10px",
-    },
+    // 조작부 — 좁은 화면은 아래 띠, 넓은 화면은 오른쪽 기둥.
+    bottom: wide
+      ? {
+          flexShrink: 0,
+          width: sideWidth,
+          borderLeft: `1px solid ${UI.border}`,
+          background: UI.panel,
+          padding: "10px 12px",
+          overflowY: "auto",
+          overscrollBehavior: "contain",
+        }
+      : {
+          flexShrink: 0,
+          borderTop: `1px solid ${UI.border}`,
+          background: UI.panel,
+          padding: "8px 10px 10px",
+        },
+    // 태블릿처럼 폭이 남을 때 조작부가 흉하게 늘어나지 않도록 가운데로 모은다.
+    barInner: { width: "100%", maxWidth: wide ? "none" : 620, margin: "0 auto" },
     // 아이용 큰 버튼(56px) — 자주 쓰는 도구/되돌리기에만 쓴다.
     bigBtn: (active, disabled) => ({
       display: "flex",
@@ -1194,6 +1282,9 @@ export default function App() {
       left: 0,
       right: 0,
       bottom: 0,
+      // 넓은 화면에서 서랍이 화면 전체로 퍼지지 않게 가운데로 모은다.
+      maxWidth: 720,
+      margin: "0 auto",
       maxHeight: "82%",
       display: "flex",
       flexDirection: "column",
@@ -1301,13 +1392,11 @@ export default function App() {
       touchAction: "manipulation",
     }),
     canvasWrap: {
-      // 남는 공간에 꽉 차되 정사각을 유지 — 가로/세로 중 좁은 쪽에 맞춘다.
-      // height를 100%로 두면 aspectRatio보다 우선해 직사각이 되므로 width 기준으로 잡고
-      // maxHeight로 세로를 제한한다(가로가 긴 화면에선 maxHeight가 폭을 줄인다).
-      width: "100%",
-      maxWidth: "100%",
-      maxHeight: "100%",
-      aspectRatio: "1",
+      // 실측한 정사각 한 변. 아직 못 쟀으면 폭 기준으로 시작한다(첫 프레임만 해당).
+      width: square || "100%",
+      height: square || undefined,
+      aspectRatio: square ? undefined : "1",
+      flexShrink: 0,
       position: "relative",
       overflow: "hidden",
       touchAction: "none",
@@ -1397,6 +1486,10 @@ export default function App() {
           EMBER<span style={{ color: UI.ember }}>PIX</span>
         </div>
         <div style={{ fontSize: 14, color: UI.dim, marginTop: -10 }}>무엇을 하고 놀까요?</div>
+        <div style={{
+          display: "flex", gap: 16, width: "100%", justifyContent: "center",
+          flexDirection: wide ? "row" : "column", alignItems: "center",
+        }}>
         {MODE_LIST.map((m) => {
           const resume = hasSavedWork && savedMode === m.id;
           return (
@@ -1416,6 +1509,7 @@ export default function App() {
             </button>
           );
         })}
+        </div>
       </div>
     );
   }
@@ -1432,7 +1526,8 @@ export default function App() {
       <style>{`@keyframes gemPop { 0%,100% { opacity:.55; transform:translateY(0) } 50% { opacity:1; transform:translateY(-2px) } }`}</style>
 
       {/* 상단 바 — 모드 나가기 / 제목 / 다시 실행 / 더보기 */}
-      <div style={S.topBar}>
+      <div style={{ ...S.topBar, justifyContent: "center" }}>
+        <div style={{ ...S.barInner, display: "flex", alignItems: "center", gap: 6 }}>
         <button style={{ ...S.btn(false), minWidth: 44 }} onClick={leaveMode} title="모드 바꾸기">
           <Icon name="back" size={18} />
         </button>
@@ -1447,6 +1542,7 @@ export default function App() {
         <button style={{ ...S.btn(drawerOpen), minWidth: 52 }} onClick={() => setDrawerOpen((v) => !v)} title="더보기 — 크기·프레임·내보내기 등">
           <Icon name="more" size={18} color={drawerOpen ? "#16130f" : UI.text} />
         </button>
+        </div>
       </div>
 
       {/* 안내 배너 — 프로젝트/팔레트/내보내기 결과를 한곳에서 알린다 (4초 후 사라짐) */}
@@ -1461,8 +1557,10 @@ export default function App() {
         </div>
       )}
 
-      {/* canvas — 남는 높이를 전부 차지한다 */}
-      <div style={S.stage}>
+      {/* 본문 — 좁으면 캔버스 위/조작부 아래, 넓으면 캔버스 왼쪽/조작부 오른쪽 */}
+      <div style={S.main}>
+      {/* canvas — 남는 공간을 전부 차지한다 */}
+      <div ref={stageRef} style={S.stage}>
         <div ref={wrapRef} style={S.canvasWrap}>
           <canvas
             ref={canvasRef}
@@ -1476,8 +1574,9 @@ export default function App() {
         </div>
       </div>
 
-      {/* 하단 조작부 — 모드마다 다르다 */}
+      {/* 조작부 — 모드마다 다르다 */}
       <div style={S.bottom}>
+      <div style={S.barInner}>
         {mode === MODE_DRAW ? (
           <>
             <div style={{ display: "flex", gap: 6 }}>
@@ -1589,7 +1688,18 @@ export default function App() {
                   <span style={{ fontSize: 12, fontFamily: "monospace", color: progDone ? UI.ember : UI.dim }}>
                     {prog.done} / {prog.total}
                   </span>
-                  {progDone && <span style={{ fontSize: 12, color: UI.ember, fontWeight: 700 }}>완성! ✨</span>}
+                  {progDone && (
+                    <button
+                      onClick={() => { setCelebrating(false); setTimeout(() => setCelebrating(true), 0); }}
+                      title="다시 축하하기"
+                      style={{
+                        fontSize: 12, color: UI.ember, fontWeight: 700, padding: "2px 6px",
+                        background: "transparent", border: "none", cursor: "pointer",
+                      }}
+                    >
+                      완성! ✨
+                    </button>
+                  )}
                   <div style={{ flex: 1 }} />
                   <button
                     style={{ ...S.btn(false), height: 32, fontSize: 11 }}
@@ -1661,6 +1771,19 @@ export default function App() {
           </>
         )}
       </div>
+      </div>
+      </div>
+
+      {/* 완성 컨페티 — 화면 전체를 덮되 터치는 통과시킨다 */}
+      {celebrating && (
+        <canvas
+          ref={confettiRef}
+          style={{
+            position: "absolute", inset: 0, width: "100%", height: "100%",
+            pointerEvents: "none", zIndex: 30,
+          }}
+        />
+      )}
 
       {/* ----- 더보기 서랍 (고급 기능은 전부 여기에) ----- */}
       {drawerOpen && (
