@@ -7,6 +7,9 @@ import {
 } from "./core/exporter.js";
 import { saveState, loadState } from "./core/storage.js";
 import { saveProjectFile, parseProject } from "./core/project.js";
+import {
+  createLibraryId, deleteLibraryItem, listLibraryItems, loadLibraryItem, saveLibraryItem,
+} from "./core/library.js";
 import { normalizeRect, inRect, extractRect, clearRect, stampPixels, flipX } from "./core/selection.js";
 import { linePoints, rectPoints, ellipsePoints, expandBrush, replaceColor } from "./core/shapes.js";
 import { imageFromFile, sampleReference } from "./core/reference.js";
@@ -146,6 +149,32 @@ function PatternThumb({ make, size = 32 }) {
   return <canvas ref={ref} width={48} height={48} style={{ width: 48, height: 48, display: "block", imageRendering: "pixelated", borderRadius: 2 }} />;
 }
 
+// 작품 보관함 카드용 작은 PNG. 현재 프레임을 64px로 축소해 localStorage에 함께 둔다.
+function makeLibraryThumb(pixels, size) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = UI.panel;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const cell = canvas.width / size;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const pixel = pixels[y * size + x];
+      if (!pixel) continue;
+      ctx.fillStyle = pixel;
+      ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+  }
+  return canvas.toDataURL("image/png");
+}
+
+function savedAtLabel(updatedAt) {
+  return new Date(updatedAt).toLocaleDateString("ko-KR", {
+    month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
+}
+
 // ---------- main ----------
 export default function App() {
   // 자동 저장본 복구 (없거나 손상 시 null → 기본값).
@@ -182,6 +211,15 @@ export default function App() {
   const projectInputRef = useRef(null);
   // { text, error } | null — 불러오기 결과 안내 (4초 후 자동 사라짐).
   const [notice, setNotice] = useState(null);
+  // 작품 보관함은 자동저장과 별도다. currentLibraryId가 있으면 같은 작품을 안전하게 갱신한다.
+  const [libraryItems, setLibraryItems] = useState(() => listLibraryItems());
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [currentLibraryId, setCurrentLibraryId] = useState(null);
+  // null | { afterNewMode: string | null } — 저장 뒤 새 작품을 시작해야 할 때 모드를 기억한다.
+  const [librarySave, setLibrarySave] = useState(null);
+  const [libraryName, setLibraryName] = useState("");
+  const [librarySaveError, setLibrarySaveError] = useState(null);
+  const [pendingNewMode, setPendingNewMode] = useState(null);
 
   // 팔레트 슬롯 상태 { user, active, recent } — 내장 Sweetie 16은 런타임에 0번으로 붙는다.
   const [palettes, setPalettes] = useState(() => normalizePaletteState(boot?.palettes));
@@ -829,6 +867,178 @@ export default function App() {
 
   const allPixels = () => framesRef.current.map((f) => f.pixels);
 
+  const projectData = () => ({
+    size,
+    frames: allPixels(),
+    currentFrame,
+    color,
+    palettes,
+    reference,
+    refOpacity,
+    pattern,
+    mode: mode ?? lastModeRef.current,
+  });
+
+  const hasMeaningfulWork = () =>
+    framesRef.current.some((frame) => frame.pixels.some(Boolean)) ||
+    reference?.some((value) => value !== null) ||
+    pattern?.some(Boolean);
+
+  const refreshLibrary = () => setLibraryItems(listLibraryItems());
+
+  const openLibrary = () => {
+    refreshLibrary();
+    setDrawerOpen(false);
+    setLibraryOpen(true);
+  };
+
+  const startFreshWork = (id) => {
+    const freshSize = DEFAULT_SIZE;
+    clearSelection();
+    framesRef.current = [{ pixels: makeGrid(freshSize), history: createHistory() }];
+    frameIndexRef.current = 0;
+    setCurrentFrame(0);
+    setSize(freshSize);
+    setColor(DEFAULT_COLOR);
+    setReference(null);
+    setRefSource(null);
+    setRefOpacity(1);
+    setShowReference(true);
+    setPattern(null);
+    patternRef.current = null;
+    setPatternFilter(null);
+    filterRef.current = null;
+    setPalettes(normalizePaletteState(null));
+    setPaletteEdit(false);
+    setPlaying(false);
+    setView(FIT_VIEW);
+    setMode(id);
+    modeRef.current = id;
+    lastModeRef.current = id;
+    setGemMode(MODES[id].gem);
+    setTool("pen");
+    setDrawerOpen(false);
+    setMoreTools(false);
+    setCelebrating(false);
+    wasDoneRef.current = false;
+    setCurrentLibraryId(null);
+    bump();
+    setNotice({ text: "새 작품을 시작했어요. 마음에 들면 보관함에 저장해요!", error: false });
+  };
+
+  const requestNewWork = (id) => {
+    if (hasMeaningfulWork()) {
+      setPendingNewMode(id);
+      return;
+    }
+    startFreshWork(id);
+  };
+
+  const openLibrarySave = (afterNewMode = null) => {
+    const saved = currentLibraryId ? loadLibraryItem(currentLibraryId) : null;
+    setLibraryName(saved?.name ?? "내 그림");
+    setLibrarySaveError(null);
+    setLibrarySave({ afterNewMode });
+  };
+
+  const saveToLibrary = (overwrite) => {
+    const saveFlow = librarySave;
+    const id = overwrite && currentLibraryId ? currentLibraryId : createLibraryId();
+    const data = projectData();
+    let thumb;
+    try {
+      thumb = makeLibraryThumb(data.frames[data.currentFrame], data.size);
+    } catch {
+      setLibrarySaveError("미리보기를 만들지 못했어요. 다시 시도해 주세요.");
+      return;
+    }
+
+    const result = saveLibraryItem({ id, name: libraryName, thumb, data });
+    if (!result.ok) {
+      const messages = {
+        quota: "저장 공간이 부족해요. 보관함에서 필요 없는 작품을 지운 뒤 다시 저장해요.",
+        limit: "내 작품은 20개까지 보관할 수 있어요. 필요 없는 작품을 지우고 다시 저장해요.",
+        unavailable: "이 브라우저에서는 보관함을 사용할 수 없어요.",
+        invalid: "작품을 저장할 수 없어요. 다시 시도해 주세요.",
+      };
+      setLibrarySaveError(messages[result.reason] ?? messages.invalid);
+      return;
+    }
+
+    setCurrentLibraryId(id);
+    refreshLibrary();
+    setLibrarySave(null);
+    if (saveFlow?.afterNewMode) {
+      startFreshWork(saveFlow.afterNewMode);
+      return;
+    }
+    setNotice({ text: `“${result.item.name}”을(를) 내 작품에 저장했어요.`, error: false });
+  };
+
+  const restoreProjectData = (data, message) => {
+    // 상태 복원 + undo 히스토리 초기화.
+    clearSelection();
+    framesRef.current = data.frames.map((px) => ({ pixels: px, history: createHistory() }));
+    frameIndexRef.current = data.currentFrame;
+    setCurrentFrame(data.currentFrame);
+    setSize(data.size);
+    setColor(data.color);
+    setReference(data.reference);
+    setRefSource(null); // 파일/보관함에는 밑그림 원본(이미지/도안 출처)이 없다.
+    setRefOpacity(data.refOpacity);
+    setShowReference(true);
+    setPattern(data.pattern);
+    patternRef.current = data.pattern;
+    setPatternFilter(null);
+    filterRef.current = null;
+    setPalettes(data.palettes);
+    setPaletteEdit(false);
+    setPlaying(false);
+    setView(FIT_VIEW);
+    setMode(data.mode);
+    modeRef.current = data.mode;
+    lastModeRef.current = data.mode;
+    setGemMode(MODES[data.mode].gem);
+    setTool("pen");
+    setDrawerOpen(false);
+    setCelebrating(false);
+    const progress = patternProgress(data.pattern, data.frames[data.currentFrame]);
+    wasDoneRef.current = !!progress && progress.total > 0 && progress.done === progress.total;
+    bump();
+    // 디바운스를 기다리지 않고 "작업 중" 자동저장 슬롯도 최신 상태로 맞춘다.
+    saveState(data);
+    setNotice({ text: message, error: false });
+  };
+
+  const openLibraryItem = (item) => {
+    const saved = loadLibraryItem(item.id);
+    if (!saved) {
+      refreshLibrary();
+      setNotice({ text: "이 작품을 찾지 못했어요. 목록을 새로 고쳤습니다.", error: true });
+      return;
+    }
+    if (saved.id !== currentLibraryId && hasMeaningfulWork()) {
+      const shouldOpen = window.confirm(
+        "지금 작업 중인 그림이 있어요. 보관함에 먼저 저장하지 않으면 다른 작품을 열 때 바뀔 수 있어요.\n\n확인: 다른 작품 열기 / 취소: 돌아가기"
+      );
+      if (!shouldOpen) return;
+    }
+    restoreProjectData(saved.data, `“${saved.name}”을(를) 열었어요. 이어서 그려요!`);
+    setCurrentLibraryId(saved.id);
+    setLibraryOpen(false);
+  };
+
+  const removeLibraryItem = (item) => {
+    if (!window.confirm(`“${item.name}”을(를) 내 작품에서 지울까요? 이 작업은 되돌릴 수 없어요.`)) return;
+    const result = deleteLibraryItem(item.id);
+    if (!result.ok) {
+      setNotice({ text: "작품을 지우지 못했어요. 다시 시도해 주세요.", error: true });
+      return;
+    }
+    if (item.id === currentLibraryId) setCurrentLibraryId(null);
+    refreshLibrary();
+  };
+
   const handleExport = () => exportSheet(allPixels(), size, exportScale);
 
   // 시트 PNG + 프레임 좌표/FPS가 담긴 JSON 메타를 함께 저장.
@@ -895,45 +1105,9 @@ export default function App() {
       setNotice({ text: "불러오기 실패 — 손상되었거나 .emberpix 형식이 아닙니다.", error: true });
       return;
     }
-    // 상태 복원 + undo 히스토리 초기화.
-    clearSelection();
-    framesRef.current = data.frames.map((px) => ({ pixels: px, history: createHistory() }));
-    frameIndexRef.current = data.currentFrame;
-    setCurrentFrame(data.currentFrame);
-    setSize(data.size);
-    setColor(data.color);
-    setReference(data.reference);
-    setRefSource(null); // 파일에는 밑그림 원본(이미지/도안 출처)이 없다.
-    setRefOpacity(data.refOpacity);
-    setShowReference(true);
-    setPattern(data.pattern);
-    patternRef.current = data.pattern;
-    setPatternFilter(null);
-    filterRef.current = null;
-    setPalettes(data.palettes);
-    setPaletteEdit(false);
-    setPlaying(false);
-    setView(FIT_VIEW);
-    // 파일에 담긴 모드로 화면을 맞춘다 (보석 도안이 있으면 보석 모드).
-    setMode(data.mode);
-    modeRef.current = data.mode;
-    setGemMode(MODES[data.mode].gem);
-    setTool("pen");
-    setDrawerOpen(false);
-    bump();
-    // 디바운스를 기다리지 않고 autosave 즉시 반영.
-    saveState({
-      size: data.size,
-      frames: data.frames,
-      currentFrame: data.currentFrame,
-      color: data.color,
-      reference: data.reference,
-      refOpacity: data.refOpacity,
-      pattern: data.pattern,
-      palettes: data.palettes,
-      mode: data.mode,
-    });
-    setNotice({ text: `불러오기 완료 — ${data.size}×${data.size}, 프레임 ${data.frames.length}개`, error: false });
+    // 외부 파일은 특정 보관함 항목과 연결하지 않는다. 이후 저장은 새 작품으로 안내한다.
+    setCurrentLibraryId(null);
+    restoreProjectData(data, `불러오기 완료 — ${data.size}×${data.size}, 프레임 ${data.frames.length}개`);
   };
 
   // ----- coloring reference -----
@@ -1475,17 +1649,176 @@ export default function App() {
   const prog = patternProgress(pattern, frames[currentFrame]?.pixels);
   const progDone = prog && prog.done === prog.total && prog.total > 0;
 
+  // 보관함 저장은 현재 화면 위에 간단한 전용 화면으로 띄운다.
+  // 이렇게 하면 평소 편집 화면은 복잡해지지 않고, 터치 버튼도 충분히 크게 유지된다.
+  if (librarySave) {
+    const hasLinkedWork = !!currentLibraryId;
+    return (
+      <div style={{ ...S.start, justifyContent: "center", gap: 16 }}>
+        <div style={{ ...S.logo, fontSize: 28 }}>내 작품에 저장</div>
+        <div style={{ width: "100%", maxWidth: 420, ...S.panel, marginBottom: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>이 작품의 이름을 지어 주세요</div>
+          <div style={{ fontSize: 12, color: UI.dim, marginBottom: 12 }}>저장하면 언제든 다시 열어서 이어 그릴 수 있어요.</div>
+          <label htmlFor="library-name" style={{ display: "block", fontSize: 12, color: UI.dim, marginBottom: 6 }}>작품 이름</label>
+          <input
+            id="library-name"
+            data-testid="library-name"
+            value={libraryName}
+            maxLength={40}
+            autoFocus
+            onChange={(e) => setLibraryName(e.target.value)}
+            style={{
+              width: "100%", height: 44, boxSizing: "border-box", padding: "0 10px",
+              background: UI.bg, color: UI.text, border: `1px solid ${UI.border}`,
+              borderRadius: 4, fontFamily: FONT, fontSize: 16,
+            }}
+          />
+          {librarySaveError && (
+            <div role="alert" style={{ marginTop: 10, color: "#ff8a7a", fontSize: 12, lineHeight: 1.5 }}>
+              {librarySaveError}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+            <button
+              data-testid="library-save-primary"
+              style={{ ...S.btn(true), flex: 1, minWidth: 150, height: 46 }}
+              onClick={() => saveToLibrary(hasLinkedWork)}
+            >
+              <Icon name="download" size={17} color="#16130f" />
+              {hasLinkedWork ? "덮어써서 저장" : "내 작품에 저장"}
+            </button>
+            {hasLinkedWork && (
+              <button style={{ ...S.btn(false), flex: 1, minWidth: 140, height: 46 }} onClick={() => saveToLibrary(false)}>
+                새 작품으로 저장
+              </button>
+            )}
+            <button
+              style={{ ...S.btn(false), width: "100%", height: 40 }}
+              onClick={() => { setLibrarySave(null); setLibrarySaveError(null); }}
+            >
+              취소
+            </button>
+          </div>
+          {hasLinkedWork && (
+            <div style={{ marginTop: 10, fontSize: 11, color: UI.dim, lineHeight: 1.5 }}>
+              같은 작품을 고치고 있다면 덮어써요. 다른 버전도 남기고 싶다면 “새 작품으로 저장”을 눌러요.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (pendingNewMode) {
+    const nextMode = MODES[pendingNewMode];
+    return (
+      <div style={{ ...S.start, justifyContent: "center", gap: 16 }}>
+        <div style={{ ...S.logo, fontSize: 28 }}>새 작품 시작</div>
+        <div style={{ width: "100%", maxWidth: 420, ...S.panel, marginBottom: 0 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>지금 그림을 먼저 보관할까요?</div>
+          <div style={{ fontSize: 13, color: UI.dim, lineHeight: 1.6 }}>
+            새 {nextMode.name} 작품을 시작하면 지금 캔버스는 바뀌어요. 마음에 든 그림은 내 작품에 남겨 둘 수 있어요.
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16 }}>
+            <button
+              data-testid="new-work-save-first"
+              style={{ ...S.btn(true), height: 48 }}
+              onClick={() => {
+                const afterNewMode = pendingNewMode;
+                setPendingNewMode(null);
+                openLibrarySave(afterNewMode);
+              }}
+            >
+              <Icon name="download" size={18} color="#16130f" /> 먼저 보관함에 저장
+            </button>
+            <button
+              data-testid="new-work-discard"
+              style={{ ...S.btn(false), height: 46 }}
+              onClick={() => {
+                const next = pendingNewMode;
+                setPendingNewMode(null);
+                startFreshWork(next);
+              }}
+            >
+              저장 안 하고 새로 시작
+            </button>
+            <button style={{ ...S.btn(false), height: 40 }} onClick={() => setPendingNewMode(null)}>취소</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (libraryOpen) {
+    return (
+      <div style={{ ...S.start, justifyContent: "flex-start", gap: 14, padding: "20px", overflowY: "auto" }}>
+        <div style={{ width: "100%", maxWidth: 720, display: "flex", alignItems: "center", gap: 8 }}>
+          <button style={{ ...S.btn(false), minWidth: 48 }} onClick={() => setLibraryOpen(false)} title="돌아가기">
+            <Icon name="back" size={19} />
+          </button>
+          <div style={{ ...S.logo, fontSize: 26, flex: 1 }}>내 작품</div>
+          <span style={{ color: UI.dim, fontSize: 12 }}>{libraryItems.length}/20</span>
+        </div>
+        <div style={{ width: "100%", maxWidth: 720, color: UI.dim, fontSize: 13, lineHeight: 1.5 }}>
+          저장한 그림을 골라 다시 이어 그려요.
+        </div>
+        {libraryItems.length === 0 ? (
+          <div style={{ ...S.panel, maxWidth: 720, textAlign: "center", padding: "28px 16px", marginBottom: 0 }}>
+            <Icon name="grid" size={34} color={UI.ember} />
+            <div style={{ marginTop: 10, fontSize: 16, fontWeight: 800 }}>아직 저장한 작품이 없어요</div>
+            <div style={{ marginTop: 6, fontSize: 12, color: UI.dim }}>그림을 만든 뒤 “보관함 저장”을 눌러 보세요.</div>
+          </div>
+        ) : (
+          <div style={{
+            width: "100%", maxWidth: 720, display: "grid",
+            gridTemplateColumns: "repeat(auto-fill, minmax(145px, 1fr))", gap: 10,
+          }}>
+            {libraryItems.map((item) => (
+              <div key={item.id} data-testid={`library-item-${item.id}`} style={{
+                background: UI.panel, border: `1px solid ${item.id === currentLibraryId ? UI.ember : UI.border}`,
+                borderRadius: 8, padding: 8, boxShadow: "3px 3px 0 rgba(0,0,0,0.25)",
+              }}>
+                <img
+                  src={item.thumb}
+                  alt={`${item.name} 미리보기`}
+                  style={{
+                    display: "block", width: "100%", aspectRatio: "1", objectFit: "contain",
+                    imageRendering: "pixelated", background: UI.bg, borderRadius: 4,
+                  }}
+                />
+                <div title={item.name} style={{ marginTop: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 14, fontWeight: 800 }}>
+                  {item.name}
+                </div>
+                <div style={{ marginTop: 3, color: UI.dim, fontSize: 11 }}>
+                  {item.size}×{item.size} · {savedAtLabel(item.updatedAt)}
+                </div>
+                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  <button style={{ ...S.btn(true), height: 38, flex: 1, padding: "0 8px" }} onClick={() => openLibraryItem(item)}>
+                    열기
+                  </button>
+                  <button style={{ ...S.btn(false, true), height: 38, minWidth: 40, padding: "0 8px" }} onClick={() => removeLibraryItem(item)} title="작품 지우기">
+                    <Icon name="trash" size={16} color="#ff8a7a" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // ----- 시작 화면 (모드 고르기) -----
   if (!mode) {
     // 지금 메모리에 있는 그림 기준 — 세션 중 나갔다 와도 정확히 표시된다.
-    const hasSavedWork = framesRef.current.some((f) => f.pixels.some((c) => c));
+    const hasSavedWork = hasMeaningfulWork();
     const savedMode = lastModeRef.current;
     return (
-      <div style={S.start}>
+      <div style={{ ...S.start, justifyContent: "flex-start", overflowY: "auto", padding: "26px 20px" }}>
         <div style={{ ...S.logo, fontSize: 30 }}>
           EMBER<span style={{ color: UI.ember }}>PIX</span>
         </div>
-        <div style={{ fontSize: 14, color: UI.dim, marginTop: -10 }}>무엇을 하고 놀까요?</div>
+        <div style={{ fontSize: 14, color: UI.dim, marginTop: -10 }}>그리던 그림을 이어가거나 새 작품을 시작해요!</div>
         <div style={{
           display: "flex", gap: 16, width: "100%", justifyContent: "center",
           flexDirection: wide ? "row" : "column", alignItems: "center",
@@ -1510,6 +1843,32 @@ export default function App() {
           );
         })}
         </div>
+        <div style={{ ...S.panel, maxWidth: 660, marginBottom: 0, padding: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>새 작품 시작</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {MODE_LIST.map((m) => (
+              <button
+                key={`new-${m.id}`}
+                data-testid={`new-work-${m.id}`}
+                style={{ ...S.btn(false), flex: 1, minWidth: 140, height: 44 }}
+                onClick={() => requestNewWork(m.id)}
+              >
+                <Icon name={m.icon} size={17} color={UI.ember} /> 새 {m.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <button
+          data-testid="library-open"
+          style={{ ...S.modeCard, maxWidth: 660, minHeight: 74, flexDirection: "row", gap: 12 }}
+          onClick={openLibrary}
+        >
+          <Icon name="grid" size={30} color={UI.ember} />
+          <div style={{ textAlign: "left" }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>내 작품</div>
+            <div style={{ fontSize: 12, color: UI.dim }}>저장한 그림 {libraryItems.length}개 · 다시 열어 이어 그리기</div>
+          </div>
+        </button>
       </div>
     );
   }
@@ -2366,6 +2725,27 @@ export default function App() {
             e.target.value = "";
           }}
         />
+        <div style={{ ...S.toolRow, marginTop: 8 }}>
+          <button
+            data-testid="library-save"
+            style={{ ...S.btn(true), height: 38, flex: 1 }}
+            onClick={() => openLibrarySave()}
+            title="이 작품을 브라우저 안의 내 작품 목록에 저장"
+          >
+            <Icon name="grid" size={17} color="#16130f" />
+            {currentLibraryId ? "내 작품 저장" : "보관함 저장"}
+          </button>
+          <button
+            style={{ ...S.btn(false), height: 38 }}
+            onClick={openLibrary}
+            title="저장한 작품 목록 열기"
+          >
+            <Icon name="grid" size={17} /> 내 작품
+          </button>
+        </div>
+        <div style={{ marginTop: 8, fontSize: 11, color: UI.dim, lineHeight: 1.5 }}>
+          .emberpix 파일로 불러온 그림도 여기서 내 작품에 보관할 수 있어요.
+        </div>
       </div>
 
               {mode === MODE_DRAW && (
