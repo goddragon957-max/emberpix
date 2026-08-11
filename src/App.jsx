@@ -220,6 +220,9 @@ export default function App() {
   const [libraryName, setLibraryName] = useState("");
   const [librarySaveError, setLibrarySaveError] = useState(null);
   const [pendingNewMode, setPendingNewMode] = useState(null);
+  // null | { type: "clear" } | { type: "resize", size: number }
+  // 아이가 서랍의 위험한 버튼을 잘못 눌러도 현재 작업을 바로 바꾸지 않는다.
+  const [pendingDestructiveAction, setPendingDestructiveAction] = useState(null);
 
   // 팔레트 슬롯 상태 { user, active, recent } — 내장 Sweetie 16은 런타임에 0번으로 붙는다.
   const [palettes, setPalettes] = useState(() => normalizePaletteState(boot?.palettes));
@@ -837,14 +840,15 @@ export default function App() {
   };
 
   // ----- actions -----
-  const clearCanvas = () => {
+  const applyClearCanvas = () => {
     pushUndo();
     activeFrame().pixels = makeGrid(size);
     bump();
   };
 
-  const changeSize = (s) => {
-    if (s === size) return;
+  const clearCanvas = () => setPendingDestructiveAction({ type: "clear" });
+
+  const applySizeChange = (s) => {
     // 크기 변경은 전체 초기화 (단일 빈 프레임 + 히스토리 리셋).
     clearSelection();
     framesRef.current = [{ pixels: makeGrid(s), history: createHistory() }];
@@ -863,6 +867,11 @@ export default function App() {
     setView(FIT_VIEW);
     setSize(s);
     bump();
+  };
+
+  const changeSize = (s) => {
+    if (s === size) return;
+    setPendingDestructiveAction({ type: "resize", size: s });
   };
 
   const allPixels = () => framesRef.current.map((f) => f.pixels);
@@ -1819,6 +1828,9 @@ export default function App() {
           EMBER<span style={{ color: UI.ember }}>PIX</span>
         </div>
         <div style={{ fontSize: 14, color: UI.dim, marginTop: -10 }}>그리던 그림을 이어가거나 새 작품을 시작해요!</div>
+        <div data-testid="first-use-hint" style={{ fontSize: 13, color: UI.dim, marginTop: -8 }}>
+          처음이라면 아래의 “그림 그리기”를 눌러 색을 고르고 톡톡 찍어 봐요!
+        </div>
         <div style={{
           display: "flex", gap: 16, width: "100%", justifyContent: "center",
           flexDirection: wide ? "row" : "column", alignItems: "center",
@@ -1878,6 +1890,13 @@ export default function App() {
   const extraTools = toolDefs.filter(
     (t) => modeDef.tools.includes(t.id) && !modeDef.quickTools.includes(t.id)
   );
+  const pendingIsResize = pendingDestructiveAction?.type === "resize";
+  const pendingSize = pendingDestructiveAction?.size;
+  const pendingTitle = pendingIsResize ? `캔버스를 ${pendingSize}×${pendingSize}로 바꿀까요?` : "지금 그림을 지울까요?";
+  const pendingDescription = pendingIsResize
+    ? "크기를 바꾸면 지금 그림, 프레임, 도안이 새 캔버스로 바뀌어요. 계속할까요?"
+    : "잘못 누른 걸까요? 지운 그림은 바로 되돌리기로 다시 가져올 수 있어요.";
+  const pendingConfirmLabel = pendingIsResize ? "크기 바꾸기" : "지우기";
 
   return (
     <div style={S.shell}>
@@ -2151,12 +2170,12 @@ export default function App() {
           <div style={S.drawer}>
             <div style={S.drawerHead}>
               <div style={{ ...S.label, marginBottom: 0, flex: 1 }}>더보기</div>
-              <select style={S.select} value={size} onChange={(e) => changeSize(Number(e.target.value))} title="캔버스 크기 (바꾸면 새로 시작)">
+              <select data-testid="canvas-size-select" style={S.select} value={size} onChange={(e) => changeSize(Number(e.target.value))} title="캔버스 크기 (바꾸면 새로 시작)">
                 {SIZES.map((s) => (
                   <option key={s} value={s}>{s}×{s}</option>
                 ))}
               </select>
-              <button style={{ ...S.btn(false, true), height: 36 }} onClick={clearCanvas} title="전체 지우기">
+              <button data-testid="clear-canvas" style={{ ...S.btn(false, true), height: 36 }} onClick={clearCanvas} title="전체 지우기">
                 <Icon name="trash" size={16} color="#ff8a7a" />
               </button>
               <button style={{ ...S.btn(false), height: 36 }} onClick={() => setDrawerOpen(false)}>닫기</button>
@@ -2757,6 +2776,40 @@ export default function App() {
             </div>
           </div>
         </>
+      )}
+      {pendingDestructiveAction && (
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 40,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+          background: "rgba(0,0,0,0.68)",
+        }}>
+          <div data-testid="destructive-confirmation" style={{ width: "100%", maxWidth: 420, ...S.panel, marginBottom: 0 }}>
+            <div style={{ ...S.logo, fontSize: 24, marginBottom: 16 }}>잠깐만요</div>
+            <div data-testid="destructive-confirmation-title" style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>{pendingTitle}</div>
+            <div style={{ fontSize: 13, color: UI.dim, lineHeight: 1.6 }}>{pendingDescription}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16 }}>
+              <button
+                data-testid="destructive-cancel"
+                style={{ ...S.btn(false), height: 46 }}
+                onClick={() => setPendingDestructiveAction(null)}
+              >
+                아니요, 돌아가기
+              </button>
+              <button
+                data-testid="destructive-confirm"
+                style={{ ...S.btn(true), height: 46 }}
+                onClick={() => {
+                  const action = pendingDestructiveAction;
+                  setPendingDestructiveAction(null);
+                  if (action.type === "resize") applySizeChange(action.size);
+                  else applyClearCanvas();
+                }}
+              >
+                {pendingConfirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -99,8 +99,120 @@ export function flowerPattern(n) {
   return out;
 }
 
+// 무지개 — 다섯 색 반원 띠. 양끝과 윗부분 모두 한 칸 이상 비운다.
+export function rainbowPattern(n) {
+  const out = new Array(n * n).fill(null);
+  const cx = n / 2;
+  const baseY = n * 0.77;
+  const outer = n * 0.4;
+  const band = n * 0.07;
+  const colors = ["#b13e53", "#ef7d57", "#ffcd75", "#a7f070", "#41a6f6"];
+
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const px = x + 0.5;
+      const py = y + 0.5;
+      if (py > baseY) continue;
+
+      const radius = Math.hypot(px - cx, py - baseY);
+      const bandIndex = Math.floor((outer - radius) / band);
+      if (bandIndex >= 0 && bandIndex < colors.length) {
+        out[idx(x, y, n)] = colors[bandIndex];
+      }
+    }
+  }
+  return out;
+}
+
+// 로켓 — 창, 양쪽 날개, 불꽃을 가진 작은 우주선.
+export function rocketPattern(n) {
+  const out = new Array(n * n).fill(null);
+  const cx = n / 2;
+  const body = [
+    [cx, n * 0.12],
+    [cx + n * 0.19, n * 0.34],
+    [cx + n * 0.19, n * 0.66],
+    [cx + n * 0.08, n * 0.76],
+    [cx, n * 0.85],
+    [cx - n * 0.08, n * 0.76],
+    [cx - n * 0.19, n * 0.66],
+    [cx - n * 0.19, n * 0.34],
+  ];
+  const leftFin = [
+    [cx - n * 0.19, n * 0.58],
+    [cx - n * 0.34, n * 0.78],
+    [cx - n * 0.08, n * 0.73],
+  ];
+  const rightFin = leftFin.map(([x, y]) => [cx + (cx - x), y]);
+  const flame = [
+    [cx - n * 0.09, n * 0.83],
+    [cx + n * 0.09, n * 0.83],
+    [cx, n * 0.91],
+  ];
+  const windowY = n * 0.43;
+  const windowR = n * 0.08;
+
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const px = x + 0.5;
+      const py = y + 0.5;
+      let color = null;
+      if (pointInPoly(px, py, flame)) color = "#ffcd75";
+      if (pointInPoly(px, py, leftFin) || pointInPoly(px, py, rightFin)) color = "#ef7d57";
+      if (pointInPoly(px, py, body)) color = "#e8f4ff";
+      if ((px - cx) ** 2 + (py - windowY) ** 2 <= windowR ** 2) color = "#29366f";
+      out[idx(x, y, n)] = color;
+    }
+  }
+  return out;
+}
+
+// 고양이 — 둥근 얼굴, 귀, 눈과 코가 보이는 친근한 얼굴 도안.
+export function catPattern(n) {
+  const out = new Array(n * n).fill(null);
+  const cx = n / 2;
+  const cy = n * 0.54;
+  const headR = n * 0.27;
+  const leftEar = [
+    [cx - n * 0.24, n * 0.43],
+    [cx - n * 0.18, n * 0.17],
+    [cx - n * 0.02, n * 0.36],
+  ];
+  const rightEar = leftEar.map(([x, y]) => [cx + (cx - x), y]);
+  const leftInnerEar = [
+    [cx - n * 0.18, n * 0.4],
+    [cx - n * 0.16, n * 0.25],
+    [cx - n * 0.07, n * 0.37],
+  ];
+  const rightInnerEar = leftInnerEar.map(([x, y]) => [cx + (cx - x), y]);
+  const eyeR = n * 0.055;
+  const noseR = n * 0.06;
+
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const px = x + 0.5;
+      const py = y + 0.5;
+      const leftEye = (px - (cx - n * 0.1)) ** 2 + (py - (cy - n * 0.02)) ** 2 <= eyeR ** 2;
+      const rightEye = (px - (cx + n * 0.1)) ** 2 + (py - (cy - n * 0.02)) ** 2 <= eyeR ** 2;
+      const nose = (px - cx) ** 2 + (py - (cy + n * 0.1)) ** 2 <= noseR ** 2;
+      const head = (px - cx) ** 2 + (py - cy) ** 2 <= headR ** 2;
+      let color = null;
+      if (pointInPoly(px, py, leftEar) || pointInPoly(px, py, rightEar)) color = "#ffcd75";
+      if (pointInPoly(px, py, leftInnerEar) || pointInPoly(px, py, rightInnerEar)) color = "#ef7d57";
+      if (head) color = "#ffcd75";
+      if (leftEye || rightEye) color = "#29366f";
+      if (nose) color = "#b13e53";
+      out[idx(x, y, n)] = color;
+    }
+  }
+  return out;
+}
+
 export const BUILTIN_PATTERNS = [
   { name: "하트", make: heartPattern },
   { name: "별", make: starPattern },
   { name: "꽃", make: flowerPattern },
+  { name: "무지개", make: rainbowPattern },
+  { name: "로켓", make: rocketPattern },
+  { name: "고양이", make: catPattern },
 ];
