@@ -30,6 +30,10 @@ import {
   removePalette, renamePalette, addColorToActive, removeColorFromActive, pushRecentColor,
 } from "./core/palettes.js";
 import { extractPalette } from "./core/quantize.js";
+import {
+  createPatternId, deletePatternItem, listPatternItems, savePatternItem,
+} from "./core/pattern-library.js";
+import { describePointer, pressureBrushSize } from "./core/pointer-input.js";
 
 // ---------- constants ----------
 const SIZES = [16, 32, 64];
@@ -170,6 +174,27 @@ function makeLibraryThumb(pixels, size) {
   return canvas.toDataURL("image/png");
 }
 
+// 사용자 사진에서 만든 보석 도안용 미리보기.
+// 원본 사진은 저장하지 않고, 생성된 도안과 작은 PNG만 보관한다.
+function makePatternThumb(pattern, size) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = UI.panel;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const cell = canvas.width / size;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const color = pattern[y * size + x];
+      if (!color) continue;
+      ctx.fillStyle = color;
+      ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+  }
+  return canvas.toDataURL("image/png");
+}
+
 function savedAtLabel(updatedAt) {
   return new Date(updatedAt).toLocaleDateString("ko-KR", {
     month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit",
@@ -291,7 +316,13 @@ export default function App() {
   // 사진 → 도안 생성 옵션.
   const [patternColors, setPatternColors] = useState(12);
   const patternInputRef = useRef(null);
-  // 완성 축하 컨페티 — 완성되는 "순간"에 한 번만 터뜨린다.
+  const [patternLibraryItems, setPatternLibraryItems] = useState(() => listPatternItems());
+  const [patternSave, setPatternSave] = useState(false);
+  const [patternName, setPatternName] = useState("");
+  const [patternSaveError, setPatternSaveError] = useState(null);
+  // 마지막 입력 장치 안내 — 펜이 연결되면 손가락과 구분해 알려준다.
+  const [pointerInfo, setPointerInfo] = useState(null);
+  const pointerInfoRef = useRef(null);
   const confettiRef = useRef(null);
   const [celebrating, setCelebrating] = useState(false);
   const wasDoneRef = useRef(false);
@@ -554,6 +585,20 @@ export default function App() {
     gestureRef.current = { view, dist, mid };
   };
 
+  const updatePointerInfo = (e, announce = false) => {
+    const info = describePointer(e);
+    const changed = pointerInfoRef.current?.type !== info.type
+      || pointerInfoRef.current?.pressure !== info.pressure;
+    pointerInfoRef.current = info;
+    if (changed) setPointerInfo(info);
+    if (announce && info.type === "pen") {
+      setNotice({
+        text: info.pressure == null ? "모바일 펜 입력을 사용 중이에요." : `모바일 펜 입력 · 압력 ${Math.round(info.pressure * 100)}%`,
+        error: false,
+      });
+    }
+  };
+
   const applyZoom = (factor, anchor) => {
     const w = wrapWidth();
     if (!w) return;
@@ -562,16 +607,17 @@ export default function App() {
   };
   const resetView = () => setView(FIT_VIEW);
 
-  // 한 칸에 붓질 — 그림 모드에서만 브러시 크기를 적용한다.
+  // 한 칸에 붓질 — 그림 모드에서만 브러시 크기/압력 보정을 적용한다.
   // 보석십자수는 실제 한 번의 탭이 정확히 한 알이어야 하므로
-  // 브러시 크기·대칭과 무관하게 앵커 셀 하나만 처리한다.
-  const paintCell = (x, y) => {
+  // 브러시 크기·대칭·펜 압력과 무관하게 앵커 셀 하나만 처리한다.
+  const paintCell = (x, y, pointerEvent = null) => {
     const px = activeFrame().pixels;
     if (gemMode && patternRef.current) {
       applyGemCell(px, patternRef.current, size, x, y, filterRef.current);
       return;
     }
-    const cells = expandBrush([[x, y]], brushSize);
+    const effectiveBrushSize = pressureBrushSize(brushSize, pointerEvent);
+    const cells = expandBrush([[x, y]], effectiveBrushSize);
     for (const [cx, cy] of cells) {
       if (cx < 0 || cy < 0 || cx >= size || cy >= size) continue;
       const i = cy * size + cx;
@@ -609,6 +655,7 @@ export default function App() {
 
   const handlePointerDown = (e) => {
     e.preventDefault();
+    updatePointerInfo(e, true);
     // 멀티터치 추적: 2개 이상이면 그리기 대신 확대/이동 제스처.
     pointersRef.current.set(e.pointerId, viewPoint(e));
     if (pointersRef.current.size >= 2) {
@@ -685,11 +732,13 @@ export default function App() {
     if (tool === "pen") noteColorUsed();
     drawingRef.current = true;
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 합성 이벤트 등 */ }
-    paintCell(x, y);
+    paintCell(x, y, e);
     bump();
   };
 
   const handlePointerMove = (e) => {
+    // 펜 압력은 실제 셀 칠하기에만 사용한다. 매 이동마다 React 상태를 갱신하면
+    // 고주파 Pointer Move에서 캔버스 입력이 끊길 수 있으므로 상태 배지는 down 때만 갱신한다.
     // 제스처 중이면 뷰만 갱신하고 그리기는 건너뛴다.
     if (pointersRef.current.has(e.pointerId)) {
       pointersRef.current.set(e.pointerId, viewPoint(e));
@@ -731,7 +780,7 @@ export default function App() {
     if (!drawingRef.current) return;
     const cellPos = cellFromEvent(e);
     if (!cellPos) return;
-    paintCell(cellPos[0], cellPos[1]);
+    paintCell(cellPos[0], cellPos[1], e);
     bump();
   };
 
@@ -1251,6 +1300,63 @@ export default function App() {
     setPatternFilter(null);
     filterRef.current = null;
   };
+
+  const refreshPatternLibrary = () => setPatternLibraryItems(listPatternItems());
+  const openPatternSave = () => {
+    if (!pattern) return;
+    setPatternName("내 보석 도안");
+    setPatternSaveError(null);
+    setPatternSave(true);
+  };
+  const saveCurrentPattern = () => {
+    if (!pattern) return;
+    let thumb;
+    try {
+      thumb = makePatternThumb(pattern, size);
+    } catch {
+      setPatternSaveError("미리보기를 만들지 못했어요. 다시 시도해 주세요.");
+      return;
+    }
+    const result = savePatternItem({
+      id: createPatternId(),
+      name: patternName,
+      size,
+      pattern: pattern.slice(),
+      thumb,
+    });
+    if (!result.ok) {
+      const messages = {
+        limit: "내 도안은 20개까지 보관할 수 있어요. 필요 없는 도안을 지워 주세요.",
+        quota: "저장 공간이 부족해요. 필요 없는 도안을 지워 주세요.",
+        unavailable: "이 브라우저에서는 도안 보관함을 사용할 수 없어요.",
+        invalid: "도안을 저장할 수 없어요. 다시 시도해 주세요.",
+      };
+      setPatternSaveError(messages[result.reason] ?? messages.invalid);
+      return;
+    }
+    refreshPatternLibrary();
+    setPatternSave(false);
+    setPatternSaveError(null);
+    setNotice({ text: `“${result.item.name}” 도안을 내 도안에 저장했어요.`, error: false });
+  };
+  const openPatternItem = (item) => {
+    if (item.size !== size) return;
+    pushUndo();
+    activeFrame().pixels = makeGrid(size);
+    setActivePattern(item.pattern.slice());
+    bump();
+    setNotice({ text: `“${item.name}” 도안을 열었어요.`, error: false });
+  };
+  const removePatternItem = (item) => {
+    if (!window.confirm(`“${item.name}” 도안을 내 도안에서 지울까요?`)) return;
+    const result = deletePatternItem(item.id);
+    if (!result.ok) {
+      setNotice({ text: "도안을 지우지 못했어요. 다시 시도해 주세요.", error: true });
+      return;
+    }
+    refreshPatternLibrary();
+    setNotice({ text: result.removed ? `“${item.name}” 도안을 지웠어요.` : "이미 지워진 도안이에요.", error: false });
+  };
   // 도안 전체를 한 번에 채우기(미리보기/포기용). 필터가 켜져 있으면 그 색만.
   const fillPattern = () => {
     if (!pattern) return;
@@ -1662,6 +1768,46 @@ export default function App() {
 
   const prog = patternProgress(pattern, frames[currentFrame]?.pixels);
   const progDone = prog && prog.done === prog.total && prog.total > 0;
+
+  // 보석 도안 저장 이름 화면.
+  if (patternSave) {
+    return (
+      <div style={{ ...S.start, justifyContent: "center", gap: 16 }}>
+        <div style={{ ...S.logo, fontSize: 28 }}>내 도안에 저장</div>
+        <div style={{ width: "100%", maxWidth: 420, ...S.panel, marginBottom: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6 }}>이 도안의 이름을 지어 주세요</div>
+          <div style={{ fontSize: 12, color: UI.dim, marginBottom: 12 }}>생성된 도안과 미리보기만 이 기기에 저장해요. 원본 사진은 저장하지 않아요.</div>
+          <label htmlFor="pattern-name" style={{ display: "block", fontSize: 12, color: UI.dim, marginBottom: 6 }}>도안 이름</label>
+          <input
+            id="pattern-name"
+            data-testid="pattern-name"
+            value={patternName}
+            maxLength={40}
+            autoFocus
+            onChange={(e) => setPatternName(e.target.value)}
+            style={{
+              width: "100%", height: 44, boxSizing: "border-box", padding: "0 10px",
+              background: UI.bg, color: UI.text, border: `1px solid ${UI.border}`,
+              borderRadius: 4, fontFamily: FONT, fontSize: 16,
+            }}
+          />
+          {patternSaveError && (
+            <div role="alert" style={{ marginTop: 10, color: "#ff8a7a", fontSize: 12, lineHeight: 1.5 }}>
+              {patternSaveError}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+            <button data-testid="pattern-save-primary" style={{ ...S.btn(true), flex: 1, height: 46 }} onClick={saveCurrentPattern}>
+              <Icon name="download" size={17} color="#16130f" /> 저장
+            </button>
+            <button style={{ ...S.btn(false), flex: 1, height: 46 }} onClick={() => { setPatternSave(false); setPatternSaveError(null); }}>
+              취소
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // 보관함 저장은 현재 화면 위에 간단한 전용 화면으로 띄운다.
   // 이렇게 하면 평소 편집 화면은 복잡해지지 않고, 터치 버튼도 충분히 크게 유지된다.
@@ -2157,6 +2303,18 @@ export default function App() {
       </div>
       </div>
 
+      {/* 입력 상태 — 펜/터치가 실제로 들어온 경우에만 표시 */}
+      {pointerInfo && (
+        <div data-testid="pointer-status" style={{
+          position: "absolute", left: 10, bottom: 10, zIndex: 5,
+          padding: "5px 8px", borderRadius: 4, background: "rgba(20,21,25,0.82)",
+          color: pointerInfo.type === "pen" ? UI.ember : UI.dim,
+          fontSize: 11, pointerEvents: "none",
+        }}>
+          {pointerInfo.label}{pointerInfo.pressure == null ? "" : ` · ${Math.round(pointerInfo.pressure * 100)}%`}
+        </div>
+      )}
+
       {/* 완성 컨페티 — 화면 전체를 덮되 터치는 통과시킨다 */}
       {celebrating && (
         <canvas
@@ -2423,6 +2581,9 @@ export default function App() {
           </button>
           {pattern && (
             <>
+              <button style={{ ...S.btn(false), height: 34 }} onClick={openPatternSave} title="현재 보석 도안을 내 도안에 저장">
+                <Icon name="download" size={16} /> 도안 저장
+              </button>
               <div style={{ flex: 1 }} />
               <button style={{ ...S.btn(false), height: 34 }} onClick={fillPattern} title={patternFilter ? "지금 필터된 색만 한 번에 채우기" : "도안대로 한 번에 채우기"}>
                 {patternFilter ? "이 색 채우기" : "전부 채우기"}
@@ -2481,9 +2642,30 @@ export default function App() {
           ))}
         </div>
 
+        {/* 내 도안 */}
+        <div style={{ fontSize: 11, color: UI.dim, letterSpacing: 1, marginTop: 8 }}>내 도안</div>
+        <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 6, paddingBottom: 4 }}>
+          {patternLibraryItems.filter((item) => item.size === size).map((item) => (
+            <div key={item.id} style={{ ...S.thumb(false), lineHeight: "normal", width: 62 }} title={`${item.name} 도안`}>
+              <img src={item.thumb} alt={`${item.name} 도안 미리보기`} style={{ display: "block", width: 56, height: 56, imageRendering: "pixelated", background: UI.bg }} />
+              <div style={{ fontSize: 10, color: UI.dim, textAlign: "center", marginTop: 3, maxWidth: 58, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
+              <div style={{ display: "flex", gap: 3, marginTop: 3 }}>
+                <button style={{ ...S.btn(true), minWidth: 0, width: 32, height: 28, padding: 0, fontSize: 10 }} onClick={() => openPatternItem(item)}>열기</button>
+                <button style={{ ...S.btn(false, true), minWidth: 0, width: 24, height: 28, padding: 0 }} onClick={() => removePatternItem(item)} title="내 도안에서 삭제"><Icon name="trash" size={13} color="#ff8a7a" /></button>
+              </div>
+            </div>
+          ))}
+          {!patternLibraryItems.filter((item) => item.size === size).length && (
+            <div style={{ fontSize: 11, color: UI.dim, padding: "8px 0" }}>사진으로 만든 도안을 저장하면 여기에 보여요.</div>
+          )}
+        </div>
+        {!!patternLibraryItems.filter((item) => item.size === size).length && (
+          <div style={{ fontSize: 11, color: UI.dim, marginTop: 1 }}>내 도안은 이 기기에만 저장돼요 · {patternLibraryItems.filter((item) => item.size === size).length}/20</div>
+        )}
+
         {!pattern && (
           <div style={{ fontSize: 11, color: UI.dim, marginTop: 8, lineHeight: 1.5 }}>
-            도안을 고르면 흐린 점 위를 톡톡 눌러 보석을 채웁니다. 터치도 됩니다.
+            도안을 고르면 흐린 점 위를 톡톡 눌러 보석을 채웁니다. 터치와 모바일 펜을 지원해요.
           </div>
         )}
       </div>
