@@ -18,6 +18,7 @@ import { BUILTIN_PATTERNS } from "./core/patterns.js";
 import {
   PATTERN_COLORS, imageToPattern, patternLegend, patternProgress, nextUnfinishedColor,
 } from "./core/gems.js";
+import { applyGemCell, canApplyGemCell } from "./core/gem-input.js";
 import { MODES, MODE_LIST, MODE_DRAW, MODE_GEM, modeFromSaved, allowsTool } from "./core/modes.js";
 import { runConfetti } from "./core/confetti.js";
 import {
@@ -561,9 +562,15 @@ export default function App() {
   };
   const resetView = () => setView(FIT_VIEW);
 
-  // 한 셀에 붓질 — 브러시 크기만큼 확장해 찍는다. 캔버스 밖은 무시.
+  // 한 칸에 붓질 — 그림 모드에서만 브러시 크기를 적용한다.
+  // 보석십자수는 실제 한 번의 탭이 정확히 한 알이어야 하므로
+  // 브러시 크기·대칭과 무관하게 앵커 셀 하나만 처리한다.
   const paintCell = (x, y) => {
     const px = activeFrame().pixels;
+    if (gemMode && patternRef.current) {
+      applyGemCell(px, patternRef.current, size, x, y, filterRef.current);
+      return;
+    }
     const cells = expandBrush([[x, y]], brushSize);
     for (const [cx, cy] of cells) {
       if (cx < 0 || cy < 0 || cx >= size || cy >= size) continue;
@@ -571,13 +578,6 @@ export default function App() {
       if (tool === "eraser") {
         px[i] = null;
         if (mirrorX) px[cy * size + (size - 1 - cx)] = null;
-        continue;
-      }
-      // 보석십자수: 도안이 있으면 그 칸의 목표색을 놓는다(배경 칸은 통과).
-      // 색 필터가 켜져 있으면 그 색 칸만 놓인다 — 나머지는 잠긴 셈.
-      if (gemMode && patternRef.current) {
-        const target = patternRef.current[i];
-        if (target && (!filterRef.current || target === filterRef.current)) px[i] = target;
         continue;
       }
       px[i] = color;
@@ -675,6 +675,11 @@ export default function App() {
       bump();
       return;
     }
+    // 보석 모드에서 배경/필터 불일치/이미 완료된 칸을 누르면
+    // 아무 변화도 없으므로 undo 스냅샷과 redo 무효화를 만들지 않는다.
+    if (gemMode && patternRef.current && !canApplyGemCell(
+      activeFrame().pixels, patternRef.current, size, x, y, filterRef.current
+    )) return;
     // pen / eraser stroke
     pushUndo();
     if (tool === "pen") noteColorUsed();
