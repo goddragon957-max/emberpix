@@ -208,6 +208,285 @@ export function catPattern(n) {
   return out;
 }
 
+function scaledTemplatePattern(template, palette) {
+  const rows = template.trim().split("\n");
+  const height = rows.length;
+  const width = rows[0]?.length ?? 0;
+
+  return function makeScaledTemplate(n) {
+    const out = new Array(n * n).fill(null);
+    const margin = Math.max(1, Math.floor(n * 0.12));
+    const drawWidth = Math.max(1, n - margin * 2);
+    const drawHeight = Math.max(1, n - margin * 2);
+
+    for (let y = 0; y < drawHeight; y += 1) {
+      for (let x = 0; x < drawWidth; x += 1) {
+        const sx = Math.floor((x * width) / drawWidth);
+        const sy = Math.floor((y * height) / drawHeight);
+        const cell = rows[sy][sx];
+        const color = palette[cell] ?? null;
+        if (!color) continue;
+        out[idx(x + margin, y + margin, n)] = color;
+      }
+    }
+
+    return out;
+  };
+}
+
+const sunPattern = scaledTemplatePattern(
+  `
+...1....
+..121...
+.12221..
+11222111
+.12221..
+..121...
+...1....
+....1...
+`,
+  {
+    "1": "#ffcd75",
+    "2": "#ef7d57",
+  },
+);
+
+const moonPattern = scaledTemplatePattern(
+  `
+...11...
+..1221..
+.1222...
+.1222...
+.1222...
+.1222...
+..1221..
+...11...
+`,
+  {
+    "1": "#ffcd75",
+    "2": "#fff1b8",
+  },
+);
+
+const cloudPattern = scaledTemplatePattern(
+  `
+........
+...11...
+..1221..
+.122222.
+12222221
+12222221
+.111111.
+........
+`,
+  {
+    "1": "#e8f4ff",
+    "2": "#41a6f6",
+  },
+);
+
+const treePattern = scaledTemplatePattern(
+  `
+...1....
+..121...
+.12221..
+1222221.
+..222...
+...3....
+...3....
+..333...
+`,
+  {
+    "1": "#a7f070",
+    "2": "#38b764",
+    "3": "#8f563b",
+  },
+);
+
+const housePattern = scaledTemplatePattern(
+  `
+...1....
+..111...
+.11211..
+1222221.
+1233321.
+1233321.
+1222221.
+..444...
+`,
+  {
+    "1": "#ef7d57",
+    "2": "#b13e53",
+    "3": "#fff1b8",
+    "4": "#8f563b",
+  },
+);
+
+const fishPattern = scaledTemplatePattern(
+  `
+........
+...11...
+.122221.
+12222221
+12223221
+.122221.
+...11...
+....4...
+`,
+  {
+    "1": "#41a6f6",
+    "2": "#73eff7",
+    "3": "#29366f",
+    "4": "#ffcd75",
+  },
+);
+
+const butterflyPattern = scaledTemplatePattern(
+  `
+1.2..2.1
+11211211
+.122221.
+..1231..
+..1231..
+.122221.
+11211211
+1.2..2.1
+`,
+  {
+    "1": "#b13e53",
+    "2": "#ffcd75",
+    "3": "#29366f",
+  },
+);
+
+const mushroomPattern = scaledTemplatePattern(
+  `
+........
+..1111..
+.122221.
+12222221
+.111111.
+...33...
+..3333..
+...33...
+`,
+  {
+    "1": "#ef7d57",
+    "2": "#fff1b8",
+    "3": "#8f563b",
+  },
+);
+
+const applePattern = scaledTemplatePattern(
+  `
+...11...
+..1221..
+.122221.
+12222221
+12222221
+12222221
+.122221.
+..111...
+`,
+  {
+    "1": "#38b764",
+    "2": "#d95763",
+  },
+);
+
+const cherryPattern = scaledTemplatePattern(
+  `
+...1.1..
+..12121.
+...1.1..
+..2...2.
+.233.332
+23332332
+.233.332
+..22222.
+`,
+  {
+    "1": "#38b764",
+    "2": "#b13e53",
+    "3": "#ef7d57",
+  },
+);
+
+const cupcakePattern = scaledTemplatePattern(
+  `
+...11...
+..1221..
+.122221.
+12222221
+.333333.
+33333333
+33333333
+.444444.
+`,
+  {
+    "1": "#fff1b8",
+    "2": "#ffcd75",
+    "3": "#d77bba",
+    "4": "#8f563b",
+  },
+);
+
+const crownPattern = scaledTemplatePattern(
+  `
+1..1..1.
+11.11.11
+12222221
+.222222.
+.233332.
+23333332
+23333332
+.444444.
+`,
+  {
+    "1": "#ffcd75",
+    "2": "#ef7d57",
+    "3": "#ffcd75",
+    "4": "#b13e53",
+  },
+);
+
+const dinosaurPattern = scaledTemplatePattern(
+  `
+....11..
+...1221.
+..122221
+.1222221
+12222311
+122221...
+.1111...
+..3.3...
+`,
+  {
+    "1": "#a7f070",
+    "2": "#38b764",
+    "3": "#8f563b",
+  },
+);
+
+const robotPattern = scaledTemplatePattern(
+  `
+..1111..
+.122221.
+12233221
+12222221
+.144441.
+..4334..
+..4..4..
+.44..44.
+`,
+  {
+    "1": "#73eff7",
+    "2": "#e8f4ff",
+    "3": "#29366f",
+    "4": "#8f563b",
+  },
+);
+
 export const BUILTIN_PATTERNS = [
   { name: "하트", make: heartPattern },
   { name: "별", make: starPattern },
@@ -215,4 +494,18 @@ export const BUILTIN_PATTERNS = [
   { name: "무지개", make: rainbowPattern },
   { name: "로켓", make: rocketPattern },
   { name: "고양이", make: catPattern },
+  { name: "해님", make: sunPattern },
+  { name: "초승달", make: moonPattern },
+  { name: "구름", make: cloudPattern },
+  { name: "나무", make: treePattern },
+  { name: "집", make: housePattern },
+  { name: "물고기", make: fishPattern },
+  { name: "나비", make: butterflyPattern },
+  { name: "버섯", make: mushroomPattern },
+  { name: "사과", make: applePattern },
+  { name: "체리", make: cherryPattern },
+  { name: "컵케이크", make: cupcakePattern },
+  { name: "왕관", make: crownPattern },
+  { name: "공룡", make: dinosaurPattern },
+  { name: "로봇", make: robotPattern },
 ];

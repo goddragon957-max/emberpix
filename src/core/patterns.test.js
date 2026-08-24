@@ -11,6 +11,11 @@ test("새 내장 도안은 목록에 포함된다", () => {
   for (const name of NEW_PATTERN_NAMES) assert.ok(names.includes(name), `${name} 도안이 필요합니다.`);
 });
 
+test("보석십자수 내장 도안은 정확히 20개이며 이름이 겹치지 않는다", () => {
+  assert.equal(BUILTIN_PATTERNS.length, 20);
+  assert.equal(new Set(BUILTIN_PATTERNS.map((pattern) => pattern.name)).size, 20);
+});
+
 test("모든 내장 도안은 16·32·64에서 가장자리 없이 그려진다", () => {
   for (const pattern of BUILTIN_PATTERNS) {
     for (const size of SIZES) {
