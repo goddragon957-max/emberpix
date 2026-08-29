@@ -1,6 +1,8 @@
 // 보석십자수 내장 도안 — 셀마다 목표 색(hex)|null 배열을 size에 맞춰 생성.
 // null = 배경(보석 안 놓는 칸). 페인트-바이-넘버로 채운다.
 
+import { validateScaledTemplateSource } from "./gridValidation.js";
+
 const idx = (x, y, n) => y * n + x;
 
 function pointInPoly(px, py, verts) {
@@ -17,9 +19,9 @@ function pointInPoly(px, py, verts) {
 
 // 하트 부등식 (x²+y²-1)³ ≤ x²y³ 의 실제 경계 — 수치로 구한 상수.
 // 이 값으로 맞춰야 도안이 캔버스 밖으로 잘리지 않는다(예전엔 위가 잘렸다).
-const HEART_W = 2.278;   // x: -1.139 ~ 1.139
-const HEART_H = 2.236;   // y: -1.000 ~ 1.236
-const HEART_CY = 0.118;  // 세로 중심 (아래로 뾰족해 위쪽이 더 길다)
+const HEART_W = 2.278; // x: -1.139 ~ 1.139
+const HEART_H = 2.236; // y: -1.000 ~ 1.236
+const HEART_CY = 0.118; // 세로 중심 (아래로 뾰족해 위쪽이 더 길다)
 
 // 하트 — 하트 부등식. 3색(빨강 몸통 / 주황 하이라이트 / 퍼플 그림자).
 export function heartPattern(n) {
@@ -49,8 +51,10 @@ export function heartPattern(n) {
 // 별 — 5각 별 다각형. 2색(노랑 몸통 / 주황 테두리).
 export function starPattern(n) {
   const out = new Array(n * n).fill(null);
-  const cx = n / 2, cy = n / 2;
-  const outer = n * 0.47, inner = n * 0.2;
+  const cx = n / 2,
+    cy = n / 2;
+  const outer = n * 0.47,
+    inner = n * 0.2;
   const verts = [];
   for (let i = 0; i < 10; i++) {
     const a = -Math.PI / 2 + (i * Math.PI) / 5;
@@ -72,12 +76,16 @@ export function starPattern(n) {
 // 꽃 — 중심 원 + 6장 꽃잎 + 줄기. 4색.
 export function flowerPattern(n) {
   const out = new Array(n * n).fill(null);
-  const cx = n / 2, cy = n * 0.44;
-  const petalR = n * 0.16, ring = n * 0.24, coreR = n * 0.15;
+  const cx = n / 2,
+    cy = n * 0.44;
+  const petalR = n * 0.16,
+    ring = n * 0.24,
+    coreR = n * 0.15;
   const inCircle = (x, y, ox, oy, r) => (x - ox) ** 2 + (y - oy) ** 2 <= r * r;
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
-      const px = x + 0.5, py = y + 0.5;
+      const px = x + 0.5,
+        py = y + 0.5;
       // 줄기
       if (px > cx - n * 0.06 && px < cx + n * 0.06 && py > cy && py < n - 0.5) {
         out[idx(x, y, n)] = "#38b764";
@@ -208,10 +216,12 @@ export function catPattern(n) {
   return out;
 }
 
-function scaledTemplatePattern(template, palette) {
-  const rows = template.trim().split("\n");
-  const height = rows.length;
-  const width = rows[0]?.length ?? 0;
+function scaledTemplatePattern(name, template, palette) {
+  const { rows, height, palette: validatedPalette, width } = validateScaledTemplateSource(
+    name,
+    template,
+    palette,
+  );
 
   return function makeScaledTemplate(n) {
     const out = new Array(n * n).fill(null);
@@ -224,7 +234,7 @@ function scaledTemplatePattern(template, palette) {
         const sx = Math.floor((x * width) / drawWidth);
         const sy = Math.floor((y * height) / drawHeight);
         const cell = rows[sy][sx];
-        const color = palette[cell] ?? null;
+        const color = validatedPalette[cell] ?? null;
         if (!color) continue;
         out[idx(x + margin, y + margin, n)] = color;
       }
@@ -234,16 +244,54 @@ function scaledTemplatePattern(template, palette) {
   };
 }
 
-const sunPattern = scaledTemplatePattern(
+function fullGridTemplatePattern(name, template, palette) {
+  const { rows, height, palette: validatedPalette, width } = validateScaledTemplateSource(
+    name,
+    template,
+    palette,
+    {
+      expectedWidth: 16,
+      expectedHeight: 16,
+      label: "보석 템플릿 원본",
+    },
+  );
+
+  return function makeFullGridTemplate(n) {
+    const out = new Array(n * n).fill(null);
+
+    for (let y = 0; y < n; y += 1) {
+      const sy = Math.min(height - 1, Math.floor((y * height) / n));
+
+      for (let x = 0; x < n; x += 1) {
+        const sx = Math.min(width - 1, Math.floor((x * width) / n));
+        const cell = rows[sy][sx];
+        out[idx(x, y, n)] = validatedPalette[cell] ?? null;
+      }
+    }
+
+    return out;
+  };
+}
+
+const sunPattern = fullGridTemplatePattern(
+  "해님",
   `
-...1....
-..121...
-.12221..
-11222111
-.12221..
-..121...
-...1....
-....1...
+................
+.......1........
+....1..1..1.....
+.....122221.....
+...1122222211...
+...1222222221...
+.11122222222111.
+..122222222221..
+..122222222221..
+.11122222222111.
+...1222222221...
+...1122222211...
+.....122221.....
+....1..1..1.....
+.......1........
+................
 `,
   {
     "1": "#ffcd75",
@@ -252,6 +300,7 @@ const sunPattern = scaledTemplatePattern(
 );
 
 const moonPattern = scaledTemplatePattern(
+  "초승달",
   `
 ...11...
 ..1221..
@@ -268,16 +317,25 @@ const moonPattern = scaledTemplatePattern(
   },
 );
 
-const cloudPattern = scaledTemplatePattern(
+const cloudPattern = fullGridTemplatePattern(
+  "구름",
   `
-........
-...11...
-..1221..
-.122222.
-12222221
-12222221
-.111111.
-........
+................
+................
+................
+......11........
+....111111......
+..1112222111....
+.122222222211...
+.1222222222221..
+.12222222222221.
+.12222222222221.
+..112222222221..
+....111111111...
+................
+................
+................
+................
 `,
   {
     "1": "#e8f4ff",
@@ -286,6 +344,7 @@ const cloudPattern = scaledTemplatePattern(
 );
 
 const treePattern = scaledTemplatePattern(
+  "나무",
   `
 ...1....
 ..121...
@@ -303,16 +362,25 @@ const treePattern = scaledTemplatePattern(
   },
 );
 
-const housePattern = scaledTemplatePattern(
+const housePattern = fullGridTemplatePattern(
+  "집",
   `
-...1....
-..111...
-.11211..
-1222221.
-1233321.
-1233321.
-1222221.
-..444...
+................
+................
+.......1........
+......111.......
+.....11111......
+....1111111.....
+...111111111....
+..11222222211...
+.1222222222221..
+.1222332233221..
+.1222332233221..
+.1222224422221..
+.1222224422221..
+.1222224422221..
+.1111111111111..
+................
 `,
   {
     "1": "#ef7d57",
@@ -322,16 +390,25 @@ const housePattern = scaledTemplatePattern(
   },
 );
 
-const fishPattern = scaledTemplatePattern(
+const fishPattern = fullGridTemplatePattern(
+  "물고기",
   `
-........
-...11...
-.122221.
-12222221
-12223221
-.122221.
-...11...
-....4...
+................
+................
+................
+...........4....
+.........1121...
+.....11.122221..
+...112222222221.
+..1222222222231.
+.12222222222221.
+..1222222222231.
+...1144.222221..
+.....11.122221..
+.........1121...
+...........4....
+................
+................
 `,
   {
     "1": "#41a6f6",
@@ -342,6 +419,7 @@ const fishPattern = scaledTemplatePattern(
 );
 
 const butterflyPattern = scaledTemplatePattern(
+  "나비",
   `
 1.2..2.1
 11211211
@@ -360,6 +438,7 @@ const butterflyPattern = scaledTemplatePattern(
 );
 
 const mushroomPattern = scaledTemplatePattern(
+  "버섯",
   `
 ........
 ..1111..
@@ -378,6 +457,7 @@ const mushroomPattern = scaledTemplatePattern(
 );
 
 const applePattern = scaledTemplatePattern(
+  "사과",
   `
 ...11...
 ..1221..
@@ -395,6 +475,7 @@ const applePattern = scaledTemplatePattern(
 );
 
 const cherryPattern = scaledTemplatePattern(
+  "체리",
   `
 ...1.1..
 ..12121.
@@ -413,6 +494,7 @@ const cherryPattern = scaledTemplatePattern(
 );
 
 const cupcakePattern = scaledTemplatePattern(
+  "컵케이크",
   `
 ...11...
 ..1221..
@@ -432,6 +514,7 @@ const cupcakePattern = scaledTemplatePattern(
 );
 
 const crownPattern = scaledTemplatePattern(
+  "왕관",
   `
 1..1..1.
 11.11.11
@@ -450,34 +533,53 @@ const crownPattern = scaledTemplatePattern(
   },
 );
 
-const dinosaurPattern = scaledTemplatePattern(
+const dinosaurPattern = fullGridTemplatePattern(
+  "공룡",
   `
-....11..
-...1221.
-..122221
-.1222221
-12222311
-122221...
-.1111...
-..3.3...
+................
+................
+..........11....
+........11221...
+.......122221...
+...11112222221..
+..122222222221..
+.122222222221...
+.12222222221....
+.12222422221....
+.12222222111....
+..12222221......
+...113311.......
+...13..31.......
+................
+................
 `,
   {
     "1": "#a7f070",
     "2": "#38b764",
     "3": "#8f563b",
+    "4": "#29366f",
   },
 );
 
-const robotPattern = scaledTemplatePattern(
+const robotPattern = fullGridTemplatePattern(
+  "로봇",
   `
-..1111..
-.122221.
-12233221
-12222221
-.144441.
-..4334..
-..4..4..
-.44..44.
+................
+.......1........
+.......4........
+.....11111......
+....1222221.....
+...122333221....
+...123232321....
+...122333221....
+...122222221....
+....1122211.....
+...144444441....
+..1441221441....
+..14..11..41....
+..44..11..44....
+................
+................
 `,
   {
     "1": "#73eff7",

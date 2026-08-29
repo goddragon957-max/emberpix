@@ -1,0 +1,1874 @@
+[
+  {
+    "kind": "draw",
+    "index": 0,
+    "name": "병아리",
+    "size": 16,
+    "length": 256,
+    "ink": 48,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 1,
+    "name": "물고기",
+    "size": 16,
+    "length": 256,
+    "ink": 44,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 2,
+    "name": "나비",
+    "size": 16,
+    "length": 256,
+    "ink": 82,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 3,
+    "name": "강아지",
+    "size": 16,
+    "length": 256,
+    "ink": 68,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 4,
+    "name": "고양이",
+    "size": 16,
+    "length": 256,
+    "ink": 56,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": false,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 5,
+    "name": "토끼",
+    "size": 16,
+    "length": 256,
+    "ink": 112,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 6,
+    "name": "곰",
+    "size": 16,
+    "length": 256,
+    "ink": 120,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 7,
+    "name": "개구리",
+    "size": 16,
+    "length": 256,
+    "ink": 144,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 8,
+    "name": "거북이",
+    "size": 16,
+    "length": 256,
+    "ink": 88,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 9,
+    "name": "공룡",
+    "size": 16,
+    "length": 256,
+    "ink": 92,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 10,
+    "name": "사과",
+    "size": 16,
+    "length": 256,
+    "ink": 80,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 11,
+    "name": "딸기",
+    "size": 16,
+    "length": 256,
+    "ink": 92,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 12,
+    "name": "버섯",
+    "size": 16,
+    "length": 256,
+    "ink": 112,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 13,
+    "name": "컵케이크",
+    "size": 16,
+    "length": 256,
+    "ink": 104,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 14,
+    "name": "해님",
+    "size": 16,
+    "length": 256,
+    "ink": 112,
+    "colors": [
+      45,
+      255
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 15,
+    "name": "초승달",
+    "size": 16,
+    "length": 256,
+    "ink": 72,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 16,
+    "name": "구름",
+    "size": 16,
+    "length": 256,
+    "ink": 64,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 17,
+    "name": "집",
+    "size": 16,
+    "length": 256,
+    "ink": 128,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 18,
+    "name": "자동차",
+    "size": 16,
+    "length": 256,
+    "ink": 96,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 19,
+    "name": "로봇",
+    "size": 16,
+    "length": 256,
+    "ink": 112,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 0,
+    "name": "하트",
+    "size": 16,
+    "length": 256,
+    "ink": 150,
+    "colors": [
+      "#ffcd75",
+      "#ef7d57",
+      "#b13e53",
+      "#5d275d"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 1,
+    "name": "별",
+    "size": 16,
+    "length": 256,
+    "ink": 70,
+    "colors": [
+      "#ef7d57",
+      "#ffcd75"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 2,
+    "name": "꽃",
+    "size": 16,
+    "length": 256,
+    "ink": 112,
+    "colors": [
+      "#b13e53",
+      "#ffcd75",
+      "#38b764"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 3,
+    "name": "무지개",
+    "size": 16,
+    "length": 256,
+    "ink": 60,
+    "colors": [
+      "#b13e53",
+      "#ef7d57",
+      "#ffcd75",
+      "#a7f070",
+      "#41a6f6"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 4,
+    "name": "로켓",
+    "size": 16,
+    "length": 256,
+    "ink": 60,
+    "colors": [
+      "#e8f4ff",
+      "#29366f",
+      "#ef7d57",
+      "#ffcd75"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 5,
+    "name": "고양이",
+    "size": 16,
+    "length": 256,
+    "ink": 66,
+    "colors": [
+      "#ffcd75",
+      "#ef7d57",
+      "#29366f",
+      "#b13e53"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 6,
+    "name": "해님",
+    "size": 16,
+    "length": 256,
+    "ink": 76,
+    "colors": [
+      "#ffcd75",
+      "#ef7d57"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 7,
+    "name": "초승달",
+    "size": 16,
+    "length": 256,
+    "ink": 86,
+    "colors": [
+      "#ffcd75",
+      "#fff1b8"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 8,
+    "name": "구름",
+    "size": 16,
+    "length": 256,
+    "ink": 109,
+    "colors": [
+      "#e8f4ff",
+      "#41a6f6"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 9,
+    "name": "나무",
+    "size": 16,
+    "length": 256,
+    "ink": 62,
+    "colors": [
+      "#a7f070",
+      "#38b764",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 10,
+    "name": "집",
+    "size": 16,
+    "length": 256,
+    "ink": 126,
+    "colors": [
+      "#ef7d57",
+      "#b13e53",
+      "#fff1b8",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 11,
+    "name": "물고기",
+    "size": 16,
+    "length": 256,
+    "ink": 100,
+    "colors": [
+      "#41a6f6",
+      "#73eff7",
+      "#29366f",
+      "#ffcd75"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 12,
+    "name": "나비",
+    "size": 16,
+    "length": 256,
+    "ink": 142,
+    "colors": [
+      "#b13e53",
+      "#ffcd75",
+      "#29366f"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 13,
+    "name": "버섯",
+    "size": 16,
+    "length": 256,
+    "ink": 95,
+    "colors": [
+      "#ef7d57",
+      "#fff1b8",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 14,
+    "name": "사과",
+    "size": 16,
+    "length": 256,
+    "ink": 139,
+    "colors": [
+      "#38b764",
+      "#d95763"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 15,
+    "name": "체리",
+    "size": 16,
+    "length": 256,
+    "ink": 111,
+    "colors": [
+      "#38b764",
+      "#b13e53",
+      "#ef7d57"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 16,
+    "name": "컵케이크",
+    "size": 16,
+    "length": 256,
+    "ink": 145,
+    "colors": [
+      "#fff1b8",
+      "#ffcd75",
+      "#d77bba",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 17,
+    "name": "왕관",
+    "size": 16,
+    "length": 256,
+    "ink": 158,
+    "colors": [
+      "#ffcd75",
+      "#ef7d57",
+      "#b13e53"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 18,
+    "name": "공룡",
+    "size": 16,
+    "length": 256,
+    "ink": 122,
+    "colors": [
+      "#a7f070",
+      "#38b764",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 19,
+    "name": "로봇",
+    "size": 16,
+    "length": 256,
+    "ink": 130,
+    "colors": [
+      "#73eff7",
+      "#e8f4ff",
+      "#29366f",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-16.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 0,
+    "name": "병아리",
+    "size": 32,
+    "length": 1024,
+    "ink": 192,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 1,
+    "name": "물고기",
+    "size": 32,
+    "length": 1024,
+    "ink": 176,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 2,
+    "name": "나비",
+    "size": 32,
+    "length": 1024,
+    "ink": 328,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 3,
+    "name": "강아지",
+    "size": 32,
+    "length": 1024,
+    "ink": 272,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 4,
+    "name": "고양이",
+    "size": 32,
+    "length": 1024,
+    "ink": 224,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": false,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 5,
+    "name": "토끼",
+    "size": 32,
+    "length": 1024,
+    "ink": 448,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 6,
+    "name": "곰",
+    "size": 32,
+    "length": 1024,
+    "ink": 480,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 7,
+    "name": "개구리",
+    "size": 32,
+    "length": 1024,
+    "ink": 576,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 8,
+    "name": "거북이",
+    "size": 32,
+    "length": 1024,
+    "ink": 352,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 9,
+    "name": "공룡",
+    "size": 32,
+    "length": 1024,
+    "ink": 368,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 10,
+    "name": "사과",
+    "size": 32,
+    "length": 1024,
+    "ink": 320,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 11,
+    "name": "딸기",
+    "size": 32,
+    "length": 1024,
+    "ink": 368,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 12,
+    "name": "버섯",
+    "size": 32,
+    "length": 1024,
+    "ink": 448,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 13,
+    "name": "컵케이크",
+    "size": 32,
+    "length": 1024,
+    "ink": 416,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 14,
+    "name": "해님",
+    "size": 32,
+    "length": 1024,
+    "ink": 448,
+    "colors": [
+      45,
+      255
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 15,
+    "name": "초승달",
+    "size": 32,
+    "length": 1024,
+    "ink": 288,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 16,
+    "name": "구름",
+    "size": 32,
+    "length": 1024,
+    "ink": 256,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 17,
+    "name": "집",
+    "size": 32,
+    "length": 1024,
+    "ink": 512,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 18,
+    "name": "자동차",
+    "size": 32,
+    "length": 1024,
+    "ink": 384,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 19,
+    "name": "로봇",
+    "size": 32,
+    "length": 1024,
+    "ink": 448,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 0,
+    "name": "하트",
+    "size": 32,
+    "length": 1024,
+    "ink": 652,
+    "colors": [
+      "#ffcd75",
+      "#ef7d57",
+      "#b13e53",
+      "#5d275d"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 1,
+    "name": "별",
+    "size": 32,
+    "length": 1024,
+    "ink": 284,
+    "colors": [
+      "#ef7d57",
+      "#ffcd75"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 2,
+    "name": "꽃",
+    "size": 32,
+    "length": 1024,
+    "ink": 476,
+    "colors": [
+      "#b13e53",
+      "#ffcd75",
+      "#38b764"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 3,
+    "name": "무지개",
+    "size": 32,
+    "length": 1024,
+    "ink": 262,
+    "colors": [
+      "#b13e53",
+      "#ef7d57",
+      "#ffcd75",
+      "#a7f070",
+      "#41a6f6"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 4,
+    "name": "로켓",
+    "size": 32,
+    "length": 1024,
+    "ink": 246,
+    "colors": [
+      "#e8f4ff",
+      "#29366f",
+      "#ef7d57",
+      "#ffcd75"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 5,
+    "name": "고양이",
+    "size": 32,
+    "length": 1024,
+    "ink": 260,
+    "colors": [
+      "#ffcd75",
+      "#ef7d57",
+      "#29366f",
+      "#b13e53"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 6,
+    "name": "해님",
+    "size": 32,
+    "length": 1024,
+    "ink": 283,
+    "colors": [
+      "#ffcd75",
+      "#ef7d57"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 7,
+    "name": "초승달",
+    "size": 32,
+    "length": 1024,
+    "ink": 296,
+    "colors": [
+      "#ffcd75",
+      "#fff1b8"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 8,
+    "name": "구름",
+    "size": 32,
+    "length": 1024,
+    "ink": 356,
+    "colors": [
+      "#e8f4ff",
+      "#41a6f6"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 9,
+    "name": "나무",
+    "size": 32,
+    "length": 1024,
+    "ink": 247,
+    "colors": [
+      "#a7f070",
+      "#38b764",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 10,
+    "name": "집",
+    "size": 32,
+    "length": 1024,
+    "ink": 419,
+    "colors": [
+      "#ef7d57",
+      "#b13e53",
+      "#fff1b8",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 11,
+    "name": "물고기",
+    "size": 32,
+    "length": 1024,
+    "ink": 350,
+    "colors": [
+      "#41a6f6",
+      "#73eff7",
+      "#29366f",
+      "#ffcd75"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 12,
+    "name": "나비",
+    "size": 32,
+    "length": 1024,
+    "ink": 452,
+    "colors": [
+      "#b13e53",
+      "#ffcd75",
+      "#29366f"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 13,
+    "name": "버섯",
+    "size": 32,
+    "length": 1024,
+    "ink": 331,
+    "colors": [
+      "#ef7d57",
+      "#fff1b8",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 14,
+    "name": "사과",
+    "size": 32,
+    "length": 1024,
+    "ink": 471,
+    "colors": [
+      "#38b764",
+      "#d95763"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 15,
+    "name": "체리",
+    "size": 32,
+    "length": 1024,
+    "ink": 360,
+    "colors": [
+      "#38b764",
+      "#b13e53",
+      "#ef7d57"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 16,
+    "name": "컵케이크",
+    "size": 32,
+    "length": 1024,
+    "ink": 491,
+    "colors": [
+      "#fff1b8",
+      "#ffcd75",
+      "#d77bba",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 17,
+    "name": "왕관",
+    "size": 32,
+    "length": 1024,
+    "ink": 524,
+    "colors": [
+      "#ffcd75",
+      "#ef7d57",
+      "#b13e53"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 18,
+    "name": "공룡",
+    "size": 32,
+    "length": 1024,
+    "ink": 414,
+    "colors": [
+      "#a7f070",
+      "#38b764",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 19,
+    "name": "로봇",
+    "size": 32,
+    "length": 1024,
+    "ink": 434,
+    "colors": [
+      "#73eff7",
+      "#e8f4ff",
+      "#29366f",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-32.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 0,
+    "name": "병아리",
+    "size": 64,
+    "length": 4096,
+    "ink": 768,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 1,
+    "name": "물고기",
+    "size": 64,
+    "length": 4096,
+    "ink": 704,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 2,
+    "name": "나비",
+    "size": 64,
+    "length": 4096,
+    "ink": 1312,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 3,
+    "name": "강아지",
+    "size": 64,
+    "length": 4096,
+    "ink": 1088,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 4,
+    "name": "고양이",
+    "size": 64,
+    "length": 4096,
+    "ink": 896,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": false,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 5,
+    "name": "토끼",
+    "size": 64,
+    "length": 4096,
+    "ink": 1792,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 6,
+    "name": "곰",
+    "size": 64,
+    "length": 4096,
+    "ink": 1920,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 7,
+    "name": "개구리",
+    "size": 64,
+    "length": 4096,
+    "ink": 2304,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 8,
+    "name": "거북이",
+    "size": 64,
+    "length": 4096,
+    "ink": 1408,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 9,
+    "name": "공룡",
+    "size": 64,
+    "length": 4096,
+    "ink": 1472,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 10,
+    "name": "사과",
+    "size": 64,
+    "length": 4096,
+    "ink": 1280,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 11,
+    "name": "딸기",
+    "size": 64,
+    "length": 4096,
+    "ink": 1472,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 12,
+    "name": "버섯",
+    "size": 64,
+    "length": 4096,
+    "ink": 1792,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 13,
+    "name": "컵케이크",
+    "size": 64,
+    "length": 4096,
+    "ink": 1664,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 14,
+    "name": "해님",
+    "size": 64,
+    "length": 4096,
+    "ink": 1792,
+    "colors": [
+      45,
+      255
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 15,
+    "name": "초승달",
+    "size": 64,
+    "length": 4096,
+    "ink": 1152,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 16,
+    "name": "구름",
+    "size": 64,
+    "length": 4096,
+    "ink": 1024,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 17,
+    "name": "집",
+    "size": 64,
+    "length": 4096,
+    "ink": 2048,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 18,
+    "name": "자동차",
+    "size": 64,
+    "length": 4096,
+    "ink": 1536,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "draw",
+    "index": 19,
+    "name": "로봇",
+    "size": 64,
+    "length": 4096,
+    "ink": 1792,
+    "colors": [
+      255,
+      45
+    ],
+    "edge": true,
+    "screenshot": "before-draw-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 0,
+    "name": "하트",
+    "size": 64,
+    "length": 4096,
+    "ink": 2758,
+    "colors": [
+      "#ffcd75",
+      "#ef7d57",
+      "#b13e53",
+      "#5d275d"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 1,
+    "name": "별",
+    "size": 64,
+    "length": 4096,
+    "ink": 1130,
+    "colors": [
+      "#ef7d57",
+      "#ffcd75"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 2,
+    "name": "꽃",
+    "size": 64,
+    "length": 4096,
+    "ink": 1894,
+    "colors": [
+      "#b13e53",
+      "#ffcd75",
+      "#38b764"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 3,
+    "name": "무지개",
+    "size": 64,
+    "length": 4096,
+    "ink": 994,
+    "colors": [
+      "#b13e53",
+      "#ef7d57",
+      "#ffcd75",
+      "#a7f070",
+      "#41a6f6"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 4,
+    "name": "로켓",
+    "size": 64,
+    "length": 4096,
+    "ink": 964,
+    "colors": [
+      "#e8f4ff",
+      "#29366f",
+      "#ef7d57",
+      "#ffcd75"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 5,
+    "name": "고양이",
+    "size": 64,
+    "length": 4096,
+    "ink": 1038,
+    "colors": [
+      "#ffcd75",
+      "#ef7d57",
+      "#29366f",
+      "#b13e53"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 6,
+    "name": "해님",
+    "size": 64,
+    "length": 4096,
+    "ink": 1051,
+    "colors": [
+      "#ffcd75",
+      "#ef7d57"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 7,
+    "name": "초승달",
+    "size": 64,
+    "length": 4096,
+    "ink": 1094,
+    "colors": [
+      "#ffcd75",
+      "#fff1b8"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 8,
+    "name": "구름",
+    "size": 64,
+    "length": 4096,
+    "ink": 1322,
+    "colors": [
+      "#e8f4ff",
+      "#41a6f6"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 9,
+    "name": "나무",
+    "size": 64,
+    "length": 4096,
+    "ink": 925,
+    "colors": [
+      "#a7f070",
+      "#38b764",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 10,
+    "name": "집",
+    "size": 64,
+    "length": 4096,
+    "ink": 1556,
+    "colors": [
+      "#ef7d57",
+      "#b13e53",
+      "#fff1b8",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 11,
+    "name": "물고기",
+    "size": 64,
+    "length": 4096,
+    "ink": 1292,
+    "colors": [
+      "#41a6f6",
+      "#73eff7",
+      "#29366f",
+      "#ffcd75"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 12,
+    "name": "나비",
+    "size": 64,
+    "length": 4096,
+    "ink": 1694,
+    "colors": [
+      "#b13e53",
+      "#ffcd75",
+      "#29366f"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 13,
+    "name": "버섯",
+    "size": 64,
+    "length": 4096,
+    "ink": 1237,
+    "colors": [
+      "#ef7d57",
+      "#fff1b8",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 14,
+    "name": "사과",
+    "size": 64,
+    "length": 4096,
+    "ink": 1749,
+    "colors": [
+      "#38b764",
+      "#d95763"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 15,
+    "name": "체리",
+    "size": 64,
+    "length": 4096,
+    "ink": 1368,
+    "colors": [
+      "#38b764",
+      "#b13e53",
+      "#ef7d57"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 16,
+    "name": "컵케이크",
+    "size": 64,
+    "length": 4096,
+    "ink": 1844,
+    "colors": [
+      "#fff1b8",
+      "#ffcd75",
+      "#d77bba",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 17,
+    "name": "왕관",
+    "size": 64,
+    "length": 4096,
+    "ink": 1964,
+    "colors": [
+      "#ffcd75",
+      "#ef7d57",
+      "#b13e53"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 18,
+    "name": "공룡",
+    "size": 64,
+    "length": 4096,
+    "ink": 1527,
+    "colors": [
+      "#a7f070",
+      "#38b764",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  },
+  {
+    "kind": "gem",
+    "index": 19,
+    "name": "로봇",
+    "size": 64,
+    "length": 4096,
+    "ink": 1622,
+    "colors": [
+      "#73eff7",
+      "#e8f4ff",
+      "#29366f",
+      "#8f563b"
+    ],
+    "edge": false,
+    "screenshot": "before-gem-64.png",
+    "visual": "pending-human-or-agent-image-review"
+  }
+]

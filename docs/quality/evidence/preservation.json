@@ -1,0 +1,246 @@
+{
+  "baseline": "d1095f2",
+  "results": [
+    {
+      "kind": "draw",
+      "name": "병아리",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "draw",
+      "name": "물고기",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "draw",
+      "name": "나비",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "draw",
+      "name": "강아지",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "draw",
+      "name": "고양이",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "draw",
+      "name": "토끼",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "곰",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "개구리",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "거북이",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "공룡",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "사과",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "딸기",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "버섯",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "컵케이크",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "해님",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "초승달",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "구름",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "집",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "자동차",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "draw",
+      "name": "로봇",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "gem",
+      "name": "하트",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "별",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "꽃",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "무지개",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "로켓",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "고양이",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "해님",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "gem",
+      "name": "초승달",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "구름",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "gem",
+      "name": "나무",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "집",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "gem",
+      "name": "물고기",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "gem",
+      "name": "나비",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "버섯",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "사과",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "체리",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "컵케이크",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "왕관",
+      "changed": false,
+      "preserved": true
+    },
+    {
+      "kind": "gem",
+      "name": "공룡",
+      "changed": true,
+      "preserved": false
+    },
+    {
+      "kind": "gem",
+      "name": "로봇",
+      "changed": true,
+      "preserved": false
+    }
+  ],
+  "status": "pass"
+}

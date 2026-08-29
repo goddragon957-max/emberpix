@@ -1,0 +1,11 @@
+{
+  "score": 95,
+  "verdict": "pass",
+  "category_match": true,
+  "differences": [],
+  "suggestions": [
+    "에뮬레이션 결과를 실기기 통과로 확대 해석하지 않는다.",
+    "향후 도안 변경도 동일한 40개 이름·순서·크기별 렌더 검수로 보호한다."
+  ],
+  "reasoning": "before와 final의 16/32/64 실제 renderer·48px 썸네일 시트, 4개 뷰포트×2모드 갤러리 스크린샷을 비교했다. 수정 대상의 형태·여백·선택 가독성이 개선됐고 정상 도안은 보존됐다."
+}
