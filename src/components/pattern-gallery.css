@@ -1,0 +1,30 @@
+.pattern-gallery {
+  box-sizing: border-box;
+  width: min(720px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  color: var(--gallery-text);
+  background: var(--gallery-bg);
+  border: 1px solid var(--gallery-border);
+  border-radius: 12px;
+  font: inherit;
+}
+.pattern-gallery[open] { display: flex; flex-direction: column; }
+.pattern-gallery::backdrop, .editor-confirmation::backdrop { background: rgb(0 0 0 / 68%); }
+.pattern-gallery__header { display: flex; align-items: center; gap: 12px; flex-shrink: 0; padding: 16px; background: var(--gallery-panel); }
+.pattern-gallery__header > div { flex: 1; min-width: 0; }
+.pattern-gallery h2 { font-size: 18px; margin: 0 0 6px; }
+.pattern-gallery p { font-size: 12px; margin: 0; color: var(--gallery-dim); }
+.pattern-gallery__header button { min-width: 48px; min-height: 44px; padding: 8px; color: inherit; background: var(--gallery-hi); border: 1px solid var(--gallery-border); border-radius: 6px; font: inherit; cursor: pointer; }
+.pattern-gallery__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 10px; min-height: 0; margin: 0; padding: 16px; list-style: none; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+.pattern-gallery__item { display: flex; flex-direction: column; align-items: center; gap: 8px; box-sizing: border-box; width: 100%; padding: 10px 4px; color: inherit; background: var(--gallery-panel); border: 2px solid transparent; border-radius: 8px; font: inherit; cursor: pointer; }
+.pattern-gallery__item[aria-pressed="true"] { border-color: var(--gallery-accent); background: var(--gallery-hi); }
+.pattern-gallery__item span { font-size: 14px; font-weight: 700; }
+.pattern-gallery__item small { color: var(--gallery-dim); font-size: 11px; }
+.pattern-gallery__item[aria-pressed="true"] small { color: var(--gallery-accent); }
+.pattern-gallery button:focus-visible, .pattern-shortcut:focus-visible, .editor-confirmation button:focus-visible { outline: 3px solid #ff7a2f; outline-offset: 2px; }
+@media (max-height: 450px) {
+  .pattern-gallery__header { padding: 10px 16px; }
+}

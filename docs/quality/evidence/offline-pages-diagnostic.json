@@ -1,0 +1,15 @@
+{
+  "cached": [
+    "http://127.0.0.1:4174/emberpix/",
+    "http://127.0.0.1:4174/emberpix/index.html",
+    "http://127.0.0.1:4174/emberpix/manifest.webmanifest",
+    "http://127.0.0.1:4174/emberpix/favicon-32.png",
+    "http://127.0.0.1:4174/emberpix/apple-touch-icon.png",
+    "http://127.0.0.1:4174/emberpix/assets/index-CzSvInqM.js",
+    "http://127.0.0.1:4174/emberpix/assets/index-BHah7Mlv.css",
+    "http://127.0.0.1:4174/emberpix/icon-192.png",
+    "http://127.0.0.1:4174/emberpix/icon-512.png"
+  ],
+  "failures": [],
+  "offlineBody": "EMBERPIX\n그리던 그림을 이어가거나 새 작품을 시작해요!\n처음이라면 아래의 “그림 그리기”를 눌러 색을 고르고 톡톡 찍어 봐요!\n그림 그리기\n펜으로 자유롭게 도트를 찍어요\n보석십자수\n도안 위를 톡톡 눌러 보석을 채워요\n새 작품 시작\n새 그림 그리기\n새 보석십자수\n내 작품\n저장한 그림 0개 · 다시 열어 이어 그리기"
+}

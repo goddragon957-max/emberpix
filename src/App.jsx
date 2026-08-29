@@ -1,4 +1,7 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
+import PatternGallery from "./components/PatternGallery.jsx";
+import { PatternThumb, TemplateThumb } from "./components/PatternPreview.jsx";
+import { keepDialogFocus } from "./components/dialog-focus.js";
 import { makeGrid, floodFill } from "./core/grid.js";
 import { createHistory } from "./core/history.js";
 import { render, renderTilePreview } from "./core/renderer.js";
@@ -112,48 +115,6 @@ function FrameThumb({ pixels, size, rev }) {
   return <canvas ref={ref} width={44} height={44} style={{ width: 44, height: 44, display: "block", imageRendering: "pixelated" }} />;
 }
 
-// ---------- template thumbnail (도안 미리보기) ----------
-function TemplateThumb({ tpl }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const cv = ref.current;
-    if (!cv) return;
-    const ctx = cv.getContext("2d");
-    const n = tpl.rows.length;
-    const cell = cv.width / n;
-    for (let y = 0; y < n; y++) {
-      for (let x = 0; x < n; x++) {
-        ctx.fillStyle = tpl.rows[y][x] === "#" ? "#2d2d2d" : "#f4f4f4";
-        ctx.fillRect(x * cell, y * cell, cell, cell);
-      }
-    }
-  }, [tpl]);
-  return <canvas ref={ref} width={48} height={48} style={{ width: 48, height: 48, display: "block", imageRendering: "pixelated", borderRadius: 2 }} />;
-}
-
-// ---------- pattern thumbnail (보석십자수 도안: 색상 배열 미리보기) ----------
-function PatternThumb({ make, size = 32 }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const cv = ref.current;
-    if (!cv) return;
-    const ctx = cv.getContext("2d");
-    ctx.clearRect(0, 0, cv.width, cv.height);
-    const pat = make(size);
-    const cell = cv.width / size;
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const c = pat[y * size + x];
-        if (c) {
-          ctx.fillStyle = c;
-          ctx.fillRect(x * cell, y * cell, cell, cell);
-        }
-      }
-    }
-  }, [make, size]);
-  return <canvas ref={ref} width={48} height={48} style={{ width: 48, height: 48, display: "block", imageRendering: "pixelated", borderRadius: 2 }} />;
-}
-
 // 작품 보관함 카드용 작은 PNG. 현재 프레임을 64px로 축소해 localStorage에 함께 둔다.
 function makeLibraryThumb(pixels, size) {
   const canvas = document.createElement("canvas");
@@ -199,6 +160,29 @@ function savedAtLabel(updatedAt) {
   return new Date(updatedAt).toLocaleDateString("ko-KR", {
     month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit",
   });
+}
+
+function autosaveFailureMessage(reason) {
+  const messages = {
+    quota: "자동저장을 갱신하지 못했어요. .emberpix 파일로 백업하거나 브라우저 저장 공간을 비워 주세요.",
+    unavailable: "이 브라우저에서는 자동저장을 쓸 수 없어요. .emberpix 파일로 백업해 주세요.",
+    invalid: "자동저장 형식이 맞지 않아 작업 슬롯을 갱신하지 못했어요. .emberpix 파일로 백업해 주세요.",
+  };
+  return messages[reason] ?? messages.invalid;
+}
+
+function samePattern(a, b) {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function isTextField(target) {
+  if (!target || typeof target !== "object") return false;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
 }
 
 // ---------- main ----------
@@ -300,6 +284,7 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   // 그림 모드에서 도형/선택 같은 확장 도구를 펼칠지.
   const [moreTools, setMoreTools] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(null);
 
   // 보석십자수 — gemMode: 픽셀을 보석알로 렌더 + 도안 보고 톡톡 채우기.
   // pattern: 셀별 목표색(hex|null) 배열 또는 null. 도안이 있으면 페인트-바이-넘버.
@@ -323,6 +308,8 @@ export default function App() {
   // 마지막 입력 장치 안내 — 펜이 연결되면 손가락과 구분해 알려준다.
   const [pointerInfo, setPointerInfo] = useState(null);
   const pointerInfoRef = useRef(null);
+  const [autosaveError, setAutosaveError] = useState(null);
+  const confirmDialogRef = useRef(null);
   const confettiRef = useRef(null);
   const [celebrating, setCelebrating] = useState(false);
   const wasDoneRef = useRef(false);
@@ -362,6 +349,22 @@ export default function App() {
   const activeHistory = frames[currentFrame]?.history;
   const undoLen = activeHistory ? activeHistory.undoLen : 0;
   const redoLen = activeHistory ? activeHistory.redoLen : 0;
+  const selectedTemplateIndex = useMemo(() => reference
+    ? TEMPLATES.findIndex((template) => samePattern(reference, templateToReference(template, size)))
+    : -1, [reference, size]);
+  const selectedBuiltinPatternIndex = useMemo(() => pattern
+    ? BUILTIN_PATTERNS.findIndex((builtin) => samePattern(pattern, builtin.make(size)))
+    : -1, [pattern, size]);
+  // 전용 저장/확인 화면은 편집 캔버스를 잠시 언마운트한다. 돌아올 때 렌더·측정을 다시 실행한다.
+  const editorVisible = !!mode && !libraryOpen && !librarySave && !patternSave && !pendingNewMode;
+
+  const closeGallery = () => {
+    setGalleryOpen(null);
+  };
+
+  const openGallery = (kind) => {
+    setGalleryOpen({ kind });
+  };
 
   // ----- rendering -----
   useEffect(() => {
@@ -394,7 +397,7 @@ export default function App() {
       preview: shapeRef.current ? { points: shapeCells(shapeRef.current), color } : null,
     });
     // mode: 시작 화면에서 돌아오면 캔버스가 새로 붙으므로 반드시 다시 그린다.
-  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference, refOpacity, selRect, gemMode, pattern, patternFilter, mode]);
+  }, [version, showGrid, size, currentFrame, onionSkin, playing, reference, showReference, refOpacity, selRect, gemMode, pattern, patternFilter, mode, editorVisible]);
 
   // ----- tile preview (켜져 있으면 현재 프레임을 3×3 반복 렌더) -----
   useEffect(() => {
@@ -402,7 +405,7 @@ export default function App() {
     const cv = tileCanvasRef.current;
     if (!cv) return;
     renderTilePreview(cv, framesRef.current[currentFrame].pixels, size);
-  }, [tilePreview, version, currentFrame, size]);
+  }, [tilePreview, version, currentFrame, size, editorVisible]);
 
   // 캔버스 영역 크기를 실측해 정사각 한 변을 정한다.
   // 캔버스 크기는 영역 크기에 영향을 주지 않으므로 관찰 루프가 생기지 않는다.
@@ -423,7 +426,7 @@ export default function App() {
     return () => ro.disconnect();
     // vp: ResizeObserver 콜백이 늦거나 막히는 상황(백그라운드 탭 등)에도
     //     창 크기 변화만으로 한 번은 반드시 다시 잰다.
-  }, [mode, vp, wide]);
+  }, [mode, vp, wide, editorVisible]);
 
   // ----- 완성 축하 -----
   // 마지막 한 알을 놓는 "순간"에만 터뜨린다. 이미 완성된 저장본을 열었을 때는
@@ -459,7 +462,7 @@ export default function App() {
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
     // 시작 화면에는 캔버스가 없다 — 모드로 들어와 래퍼가 붙은 뒤 다시 등록해야 한다.
-  }, [mode]);
+  }, [mode, editorVisible]);
 
   // 창 크기가 바뀌면 이동량(px 기준)을 다시 제한하고, 레이아웃 분기도 다시 계산한다.
   useEffect(() => {
@@ -488,7 +491,7 @@ export default function App() {
   // ----- autosave (픽셀/크기/색/프레임 변경 후 디바운스 저장) -----
   useEffect(() => {
     const t = setTimeout(() => {
-      saveState({
+      const result = saveState({
         size,
         frames: framesRef.current.map((f) => f.pixels),
         currentFrame,
@@ -499,9 +502,27 @@ export default function App() {
         palettes,
         mode: mode ?? lastModeRef.current, // 시작 화면에선 마지막 모드를 유지한다
       });
+      if (result.ok) {
+        setAutosaveError(null);
+        return;
+      }
+      setAutosaveError(result.reason);
     }, AUTOSAVE_MS);
     return () => clearTimeout(t);
   }, [version, size, color, currentFrame, reference, refOpacity, pattern, palettes, mode]);
+
+  useEffect(() => {
+    if (!pendingDestructiveAction) return;
+    const dialog = confirmDialogRef.current;
+    if (!dialog) return;
+    const opener = document.activeElement;
+    dialog.showModal();
+    dialog.querySelector('[data-testid="destructive-cancel"]').focus();
+    return () => {
+      dialog.close();
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, [pendingDestructiveAction]);
 
   // 실제로 색을 쓴 순간에만 최근 목록에 올린다(스와치를 고른 것만으로는 기록 안 함).
   // 이미 맨 앞이면 pushRecentColor가 같은 참조를 반환해 리렌더가 일어나지 않는다.
@@ -955,6 +976,14 @@ export default function App() {
     setLibraryOpen(true);
   };
 
+  const requestBuiltinPattern = (i) => {
+    if (hasMeaningfulWork()) {
+      setPendingDestructiveAction({ type: "builtin-pattern", index: i });
+      return;
+    }
+    applyBuiltinPattern(i);
+  };
+
   const startFreshWork = (id) => {
     const freshSize = DEFAULT_SIZE;
     clearSelection();
@@ -1069,7 +1098,13 @@ export default function App() {
     wasDoneRef.current = !!progress && progress.total > 0 && progress.done === progress.total;
     bump();
     // 디바운스를 기다리지 않고 "작업 중" 자동저장 슬롯도 최신 상태로 맞춘다.
-    saveState(data);
+    const autosave = saveState(data);
+    if (!autosave.ok) {
+      setAutosaveError(autosave.reason);
+      setNotice({ text: `${message} ${autosaveFailureMessage(autosave.reason)}`, error: true });
+      return;
+    }
+    setAutosaveError(null);
     setNotice({ text: message, error: false });
   };
 
@@ -1347,6 +1382,14 @@ export default function App() {
     bump();
     setNotice({ text: `“${item.name}” 도안을 열었어요.`, error: false });
   };
+  const requestOpenPatternItem = (item) => {
+    if (item.size !== size) return;
+    if (hasMeaningfulWork()) {
+      setPendingDestructiveAction({ type: "saved-pattern", itemId: item.id });
+      return;
+    }
+    openPatternItem(item);
+  };
   const removePatternItem = (item) => {
     if (!window.confirm(`“${item.name}” 도안을 내 도안에서 지울까요?`)) return;
     const result = deletePatternItem(item.id);
@@ -1457,6 +1500,8 @@ export default function App() {
   // keyboard shortcuts — deleteSelection이 size를 캡처하므로 size 변경 시 재등록.
   useEffect(() => {
     const onKey = (e) => {
+      if (!modeRef.current || galleryOpen || libraryOpen || librarySave || patternSave || pendingNewMode || pendingDestructiveAction) return;
+      if (isTextField(e.target)) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         e.shiftKey ? redo() : undo();
@@ -1479,7 +1524,7 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [size]);
+  }, [size, galleryOpen, libraryOpen, librarySave, patternSave, pendingNewMode, pendingDestructiveAction]);
 
   // ----- styles -----
   const FONT = "'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif";
@@ -2043,11 +2088,29 @@ export default function App() {
   );
   const pendingIsResize = pendingDestructiveAction?.type === "resize";
   const pendingSize = pendingDestructiveAction?.size;
-  const pendingTitle = pendingIsResize ? `캔버스를 ${pendingSize}×${pendingSize}로 바꿀까요?` : "지금 그림을 지울까요?";
-  const pendingDescription = pendingIsResize
-    ? "크기를 바꾸면 지금 그림, 프레임, 도안이 새 캔버스로 바뀌어요. 계속할까요?"
-    : "잘못 누른 걸까요? 지운 그림은 바로 되돌리기로 다시 가져올 수 있어요.";
-  const pendingConfirmLabel = pendingIsResize ? "크기 바꾸기" : "지우기";
+  const pendingBuiltinPattern = pendingDestructiveAction?.type === "builtin-pattern"
+    ? BUILTIN_PATTERNS[pendingDestructiveAction.index]
+    : null;
+  const pendingSavedPattern = pendingDestructiveAction?.type === "saved-pattern"
+    ? patternLibraryItems.find((item) => item.id === pendingDestructiveAction.itemId) ?? null
+    : null;
+  const pendingTitle = pendingBuiltinPattern
+    ? `“${pendingBuiltinPattern.name}” 도안을 열까요?`
+    : pendingSavedPattern
+      ? `“${pendingSavedPattern.name}” 도안을 열까요?`
+      : pendingIsResize
+        ? `캔버스를 ${pendingSize}×${pendingSize}로 바꿀까요?`
+        : "지금 그림을 지울까요?";
+  const pendingDescription = pendingBuiltinPattern || pendingSavedPattern
+    ? "도안을 바꾸면 지금 캔버스와 진행 중인 보석 배치가 새 도안으로 바뀌어요. 계속할까요?"
+    : pendingIsResize
+      ? "크기를 바꾸면 지금 그림, 프레임, 도안이 새 캔버스로 바뀌어요. 계속할까요?"
+      : "잘못 누른 걸까요? 지운 그림은 바로 되돌리기로 다시 가져올 수 있어요.";
+  const pendingConfirmLabel = pendingBuiltinPattern || pendingSavedPattern
+    ? "도안 열기"
+    : pendingIsResize
+      ? "크기 바꾸기"
+      : "지우기";
 
   return (
     <div style={S.shell}>
@@ -2075,6 +2138,18 @@ export default function App() {
       </div>
 
       {/* 안내 배너 — 프로젝트/팔레트/내보내기 결과를 한곳에서 알린다 (4초 후 사라짐) */}
+      {autosaveError && (
+        <div role="alert" style={{
+          flexShrink: 0, display: "flex", alignItems: "center", gap: 8,
+          padding: "7px 12px", fontSize: 12, lineHeight: 1.45,
+          color: "#ffb09f", background: "#2a1614", borderBottom: `1px solid ${UI.border}`,
+        }}>
+          <span style={{ flex: 1 }}>{autosaveFailureMessage(autosaveError)}</span>
+          <button type="button" style={{ ...S.btn(false), height: 34, flexShrink: 0 }} onClick={handleProjectSave}>
+            파일로 백업
+          </button>
+        </div>
+      )}
       {notice && (
         <div style={{
           flexShrink: 0, padding: "7px 12px", fontSize: 12,
@@ -2085,6 +2160,16 @@ export default function App() {
           {notice.text}
         </div>
       )}
+      {galleryOpen && (
+        <PatternGallery kind={galleryOpen.kind === "template" ? "draw" : "gem"} size={size} theme={UI}
+          selectedIndex={galleryOpen.kind === "template" ? selectedTemplateIndex : selectedBuiltinPatternIndex}
+          onClose={closeGallery}
+          onSelect={(index) => {
+            closeGallery();
+            if (galleryOpen.kind === "template") applyTemplate(index);
+            else requestBuiltinPattern(index);
+          }} />
+      )}
 
       {/* 본문 — 좁으면 캔버스 위/조작부 아래, 넓으면 캔버스 왼쪽/조작부 오른쪽 */}
       <div style={S.main}>
@@ -2093,6 +2178,7 @@ export default function App() {
         <div ref={wrapRef} style={S.canvasWrap}>
           <canvas
             ref={canvasRef}
+            data-testid="editor-canvas"
             style={{ ...S.canvas, transform: cssTransform(view) }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
@@ -2522,11 +2608,13 @@ export default function App() {
         )}
 
         {/* 내장 도안 갤러리 */}
+        <button type="button" className="pattern-shortcut" style={{ ...S.btn(false), width: "100%", marginTop: 10 }}
+          onClick={() => openGallery("template")} aria-haspopup="dialog">도안 전체보기</button>
         <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 10, paddingBottom: 4 }}>
           {TEMPLATES.map((t, i) => {
-            const active = refSource?.type === "template" && refSource.index === i;
+            const active = selectedTemplateIndex === i;
             return (
-              <div
+              <button type="button" className="pattern-shortcut" aria-pressed={active}
                 key={t.name}
                 style={{ ...S.thumb(active), lineHeight: "normal" }}
                 onClick={() => applyTemplate(i)}
@@ -2536,7 +2624,7 @@ export default function App() {
                 <div style={{ fontSize: 10, color: active ? UI.ember : UI.dim, textAlign: "center", marginTop: 3 }}>
                   {t.name}
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -2628,17 +2716,19 @@ export default function App() {
         />
 
         {/* 내장 도안 */}
+        <button type="button" className="pattern-shortcut" style={{ ...S.btn(false), width: "100%", marginTop: 10 }}
+          onClick={() => openGallery("pattern")} aria-haspopup="dialog">도안 전체보기</button>
         <div style={{ display: "flex", gap: 6, overflowX: "auto", marginTop: 10, paddingBottom: 4 }}>
           {BUILTIN_PATTERNS.map((p, i) => (
-            <div
+            <button type="button" className="pattern-shortcut" aria-pressed={selectedBuiltinPatternIndex === i}
               key={p.name}
-              style={{ ...S.thumb(false), lineHeight: "normal" }}
-              onClick={() => applyBuiltinPattern(i)}
+              style={{ ...S.thumb(selectedBuiltinPatternIndex === i), lineHeight: "normal" }}
+              onClick={() => requestBuiltinPattern(i)}
               title={`${p.name} 도안으로 보석십자수 시작`}
             >
               <PatternThumb make={p.make} size={size} />
               <div style={{ fontSize: 10, color: UI.dim, textAlign: "center", marginTop: 3 }}>{p.name}</div>
-            </div>
+            </button>
           ))}
         </div>
 
@@ -2650,7 +2740,7 @@ export default function App() {
               <img src={item.thumb} alt={`${item.name} 도안 미리보기`} style={{ display: "block", width: 56, height: 56, imageRendering: "pixelated", background: UI.bg }} />
               <div style={{ fontSize: 10, color: UI.dim, textAlign: "center", marginTop: 3, maxWidth: 58, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.name}</div>
               <div style={{ display: "flex", gap: 3, marginTop: 3 }}>
-                <button style={{ ...S.btn(true), minWidth: 0, width: 32, height: 28, padding: 0, fontSize: 10 }} onClick={() => openPatternItem(item)}>열기</button>
+                <button style={{ ...S.btn(true), minWidth: 0, width: 32, height: 28, padding: 0, fontSize: 10 }} onClick={() => requestOpenPatternItem(item)}>열기</button>
                 <button style={{ ...S.btn(false, true), minWidth: 0, width: 24, height: 28, padding: 0 }} onClick={() => removePatternItem(item)} title="내 도안에서 삭제"><Icon name="trash" size={13} color="#ff8a7a" /></button>
               </div>
             </div>
@@ -2965,15 +3055,14 @@ export default function App() {
         </>
       )}
       {pendingDestructiveAction && (
-        <div style={{
-          position: "absolute", inset: 0, zIndex: 40,
-          display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
-          background: "rgba(0,0,0,0.68)",
-        }}>
+        <dialog ref={confirmDialogRef} className="editor-confirmation" aria-labelledby="destructive-title" aria-describedby="destructive-description"
+          onKeyDown={keepDialogFocus}
+          onCancel={(event) => { event.preventDefault(); setPendingDestructiveAction(null); }}
+          style={{ width: "min(420px, calc(100vw - 40px))", maxHeight: "calc(100dvh - 40px)", padding: 0, border: 0, background: "transparent", color: UI.text, margin: "auto" }}>
           <div data-testid="destructive-confirmation" style={{ width: "100%", maxWidth: 420, ...S.panel, marginBottom: 0 }}>
             <div style={{ ...S.logo, fontSize: 24, marginBottom: 16 }}>잠깐만요</div>
-            <div data-testid="destructive-confirmation-title" style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>{pendingTitle}</div>
-            <div style={{ fontSize: 13, color: UI.dim, lineHeight: 1.6 }}>{pendingDescription}</div>
+            <div id="destructive-title" data-testid="destructive-confirmation-title" style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>{pendingTitle}</div>
+            <div id="destructive-description" style={{ fontSize: 13, color: UI.dim, lineHeight: 1.6 }}>{pendingDescription}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 16 }}>
               <button
                 data-testid="destructive-cancel"
@@ -2989,6 +3078,12 @@ export default function App() {
                   const action = pendingDestructiveAction;
                   setPendingDestructiveAction(null);
                   if (action.type === "resize") applySizeChange(action.size);
+                  else if (action.type === "builtin-pattern") applyBuiltinPattern(action.index);
+                  else if (action.type === "saved-pattern") {
+                    const item = patternLibraryItems.find((candidate) => candidate.id === action.itemId);
+                    if (item) openPatternItem(item);
+                    else setNotice({ text: "도안을 찾지 못했어요. 목록을 새로 고쳐 주세요.", error: true });
+                  }
                   else applyClearCanvas();
                 }}
               >
@@ -2996,7 +3091,7 @@ export default function App() {
               </button>
             </div>
           </div>
-        </div>
+        </dialog>
       )}
     </div>
   );

@@ -1,0 +1,16 @@
+{
+  "url": "http://127.0.0.1:4173/",
+  "cached": [
+    "http://127.0.0.1:4173/",
+    "http://127.0.0.1:4173/index.html",
+    "http://127.0.0.1:4173/manifest.webmanifest",
+    "http://127.0.0.1:4173/favicon-32.png",
+    "http://127.0.0.1:4173/apple-touch-icon.png",
+    "http://127.0.0.1:4173/assets/index-CzSvInqM.js",
+    "http://127.0.0.1:4173/assets/index-BHah7Mlv.css",
+    "http://127.0.0.1:4173/icon-192.png",
+    "http://127.0.0.1:4173/icon-512.png"
+  ],
+  "failures": [],
+  "status": "pass"
+}

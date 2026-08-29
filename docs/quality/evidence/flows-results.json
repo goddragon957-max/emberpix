@@ -1,0 +1,22 @@
+[
+  {
+    "scenario": "A",
+    "status": "pass"
+  },
+  {
+    "scenario": "B",
+    "status": "pass"
+  },
+  {
+    "scenario": "C",
+    "status": "pass"
+  },
+  {
+    "scenario": "E",
+    "status": "pass"
+  },
+  {
+    "scenario": "I",
+    "status": "pass"
+  }
+]

@@ -1,0 +1,16 @@
+{
+  "url": "http://127.0.0.1:4174/emberpix/",
+  "cached": [
+    "http://127.0.0.1:4174/emberpix/",
+    "http://127.0.0.1:4174/emberpix/index.html",
+    "http://127.0.0.1:4174/emberpix/manifest.webmanifest",
+    "http://127.0.0.1:4174/emberpix/favicon-32.png",
+    "http://127.0.0.1:4174/emberpix/apple-touch-icon.png",
+    "http://127.0.0.1:4174/emberpix/assets/index-CzSvInqM.js",
+    "http://127.0.0.1:4174/emberpix/assets/index-BHah7Mlv.css",
+    "http://127.0.0.1:4174/emberpix/icon-192.png",
+    "http://127.0.0.1:4174/emberpix/icon-512.png"
+  ],
+  "failures": [],
+  "status": "pass"
+}

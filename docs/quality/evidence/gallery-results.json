@@ -1,0 +1,82 @@
+[
+  {
+    "mode": "draw",
+    "width": 360,
+    "height": 800,
+    "count": 20,
+    "keyboard": "pass",
+    "focus": "pass",
+    "noPageScroll": true,
+    "errors": []
+  },
+  {
+    "mode": "gem",
+    "width": 360,
+    "height": 800,
+    "count": 20,
+    "keyboard": "pass",
+    "focus": "pass",
+    "noPageScroll": true,
+    "errors": []
+  },
+  {
+    "mode": "draw",
+    "width": 390,
+    "height": 844,
+    "count": 20,
+    "keyboard": "pass",
+    "focus": "pass",
+    "noPageScroll": true,
+    "errors": []
+  },
+  {
+    "mode": "gem",
+    "width": 390,
+    "height": 844,
+    "count": 20,
+    "keyboard": "pass",
+    "focus": "pass",
+    "noPageScroll": true,
+    "errors": []
+  },
+  {
+    "mode": "draw",
+    "width": 844,
+    "height": 390,
+    "count": 20,
+    "keyboard": "pass",
+    "focus": "pass",
+    "noPageScroll": true,
+    "errors": []
+  },
+  {
+    "mode": "gem",
+    "width": 844,
+    "height": 390,
+    "count": 20,
+    "keyboard": "pass",
+    "focus": "pass",
+    "noPageScroll": true,
+    "errors": []
+  },
+  {
+    "mode": "draw",
+    "width": 1280,
+    "height": 800,
+    "count": 20,
+    "keyboard": "pass",
+    "focus": "pass",
+    "noPageScroll": true,
+    "errors": []
+  },
+  {
+    "mode": "gem",
+    "width": 1280,
+    "height": 800,
+    "count": 20,
+    "keyboard": "pass",
+    "focus": "pass",
+    "noPageScroll": true,
+    "errors": []
+  }
+]
