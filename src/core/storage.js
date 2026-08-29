@@ -11,40 +11,73 @@ import { VALID_SIZES, FALLBACK_COLOR, isValidFrame, normalizeStateData } from ".
 const KEY_V2 = "emberpix:autosave:v2";
 const KEY_V1 = "emberpix:autosave:v1";
 
-export function saveState({ size, frames, currentFrame, color, reference, refOpacity, pattern, palettes, mode }) {
+function getStorage(storage) {
   try {
-    localStorage.setItem(
+    if (storage !== undefined) return storage;
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    // 저장 API뿐 아니라 storage 속성 접근 자체도 브라우저 정책으로 거부될 수 있다.
+    return null;
+  }
+}
+
+function isQuotaError(error) {
+  return error?.name === "QuotaExceededError" || error?.code === 22 || error?.code === 1014;
+}
+
+export function saveState({ size, frames, currentFrame, color, reference, refOpacity, pattern, palettes, mode }, storage) {
+  const target = getStorage(storage);
+  if (!target || typeof target.setItem !== "function") return { ok: false, reason: "unavailable" };
+
+  const data = normalizeStateData({
+    size,
+    frames,
+    currentFrame,
+    color,
+    reference,
+    refOpacity,
+    pattern,
+    palettes,
+    mode,
+  });
+  if (!data) return { ok: false, reason: "invalid" };
+
+  try {
+    target.setItem(
       KEY_V2,
       JSON.stringify({
         version: 2,
-        size,
-        frames,
-        currentFrame,
-        color,
-        reference: reference ?? null,
-        refOpacity: typeof refOpacity === "number" ? refOpacity : 1,
-        pattern: pattern ?? null,
-        palettes: palettes ?? null,
-        mode: mode ?? null,
+        size: data.size,
+        frames: data.frames,
+        currentFrame: data.currentFrame,
+        color: data.color,
+        reference: data.reference,
+        refOpacity: data.refOpacity,
+        pattern: data.pattern,
+        palettes: data.palettes,
+        mode: data.mode,
       })
     );
-  } catch {
-    // 용량 초과/프라이빗 모드 등 — 조용히 무시.
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: isQuotaError(error) ? "quota" : "unavailable" };
   }
 }
 
 // 반환: { size, frames, currentFrame, color, reference, refOpacity } 또는 null.
-export function loadState() {
-  const v2 = readV2();
+export function loadState(storage) {
+  const v2 = readV2(storage);
   if (v2) return v2;
-  const v1 = readV1();
+  const v1 = readV1(storage);
   if (v1) return { size: v1.size, frames: [v1.pixels], currentFrame: 0, color: v1.color, reference: null };
   return null;
 }
 
-function readV2() {
+function readV2(storage) {
+  const target = getStorage(storage);
+  if (!target || typeof target.getItem !== "function") return null;
   try {
-    const raw = localStorage.getItem(KEY_V2);
+    const raw = target.getItem(KEY_V2);
     if (!raw) return null;
     return normalizeStateData(JSON.parse(raw));
   } catch {
@@ -52,9 +85,11 @@ function readV2() {
   }
 }
 
-function readV1() {
+function readV1(storage) {
+  const target = getStorage(storage);
+  if (!target || typeof target.getItem !== "function") return null;
   try {
-    const raw = localStorage.getItem(KEY_V1);
+    const raw = target.getItem(KEY_V1);
     if (!raw) return null;
     const d = JSON.parse(raw);
     if (!d || typeof d !== "object") return null;

@@ -6,7 +6,7 @@
 //   palettes = 다중 팔레트 슬롯 상태(v2 신규). palette = 활성 팔레트 색 배열로,
 //   v1 파일 하위호환 + 다른 도구에서 읽기 쉬운 평면 형태로 함께 남긴다.
 
-import { normalizeStateData } from "./format.js";
+import { normalizeStateData, isValidFrame, isValidReference } from "./format.js";
 import { normalizePaletteState, paletteStateFromLegacy } from "./palettes.js";
 
 const APP_TAG = "emberpix";
@@ -47,6 +47,11 @@ export function parseProject(text) {
     return null;
   }
   if (!d || typeof d !== "object" || d.app !== APP_TAG) return null;
+  // 외부 파일의 명시된 손상 필드를 지워서 복구하면 현재 작업을 잘못 덮어쓰게 된다.
+  // 구 버전에서 아예 없던 선택 필드는 계속 허용한다.
+  if (d.version != null && d.version !== 1 && d.version !== FILE_VERSION) return null;
+  if (d.pattern != null && !isValidFrame(d.pattern, d.size)) return null;
+  if (d.reference != null && !isValidReference(d.reference, d.size)) return null;
   const state = normalizeStateData(d);
   if (!state) return null;
   const palettes = d.palettes
